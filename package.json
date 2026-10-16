@@ -1,0 +1,19 @@
+{
+  "name": "cimahub",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/start-site.mjs --watch",
+    "start": "node scripts/start-site.mjs",
+    "test": "node --test",
+    "db:setup": "node scripts/setup-local-postgres.mjs",
+    "db:migrate": "node --env-file=.env scripts/migrate-postgres.mjs"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "pg": "^8.23.1"
+  }
+}

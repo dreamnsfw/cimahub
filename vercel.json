@@ -1,0 +1,15 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "fluid": true,
+  "buildCommand": "",
+  "functions": {
+    "api/index.mjs": {
+      "maxDuration": 300,
+      "includeFiles": "{public/**,db/**}"
+    }
+  },
+  "routes": [
+    {"src": "/(.*)", "dest": "/api/index.mjs"}
+  ]
+}
