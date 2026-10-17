@@ -1,3 +1,6 @@
+import {movieIdentityTitle} from './movie-presentation.js';
+import {englishWorkName} from './title-language.js';
+
 const words=value=>String(value||'').normalize('NFKD').replace(/[\p{M}\p{Cf}]/gu,'').toLowerCase().match(/[\p{L}\p{N}]+/gu)||[];
 const useful=value=>words(value).filter(w=>!['the','of','and','a','an','in','on','with','for','to'].includes(w));
 const titleOf=work=>work.name||'';
@@ -37,4 +40,34 @@ export async function searchWithCatalog({query,page=1,remote,works,load}){
  const slice=matches.slice((page-1)*20,page*20),results=[];
  for(let i=0;i<slice.length;i+=4)results.push(...await Promise.all(slice.slice(i,i+4).map(async m=>({...await load(m),media_type:m.type}))));
  return {...data,page,total_results:matches.length,total_pages:Math.ceil(matches.length/20),results};
+}
+
+// Search responses already contain everything a card needs. Detail enrichment
+// (images, credits and translations) belongs to the work's own page.
+export function presentSearchResults(data){
+ const results=(data.results||[]).filter(item=>!item.adult&&['movie','tv'].includes(item.media_type)).map(item=>{
+  const movie=item.media_type==='movie',field=movie?'title':'name';
+  const original=item[movie?'original_title':'original_name'];
+  const name=(item.original_language==='ar'?original:englishWorkName(item))||item[field]||original||'';
+  const result={...item,[field]:name,genre_ids:item.genre_ids||item.genres?.map(genre=>genre.id)||[]};
+  // A localized detail story must not be replaced by an English search snippet.
+  delete result.overview;
+  const animated=(item.genre_ids||item.genres?.map(genre=>genre.id)||[]).includes(16);
+  if(movie){
+   result.display_title=movieIdentityTitle(result);
+   if(animated)result.animation_presentation=true;
+   else result.movie_presentation_version=1;
+  }else{
+   const year=(item.first_air_date||'').slice(0,4);
+   result.series_display_title=[animated?'مسلسل أنمي':'مسلسل',name,year,item.original_language==='ar'?'':'مترجم','كامل'].filter(Boolean).join(' ');
+   result.series_presentation=true;
+  }
+  return result;
+ });
+ return {...data,results};
+}
+
+const cardFields=['id','media_type','adult','title','name','original_title','original_name','original_language','english_title','display_title','series_display_title','release_date','first_air_date','genre_ids','poster_path','vote_average','public_path','movie_presentation_version','animation_presentation','series_presentation'];
+export function searchResultCards(data){
+ return {...data,results:(data.results||[]).map(item=>Object.fromEntries(cardFields.filter(field=>item[field]!==undefined).map(field=>[field,item[field]])))};
 }

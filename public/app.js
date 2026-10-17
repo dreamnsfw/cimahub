@@ -200,6 +200,7 @@ async function renderRoute(){
   const [path,query='']=(location.hash.slice(1)||'/').split('?');const parts=path.split('/').filter(Boolean);let page=parts[0]||'home';if(page==='saved'){location.replace('/#/');return;}const params=new URLSearchParams(query||(!location.hash?location.search:''));
   if(location.hash.startsWith('#/')&&['home','recent','top','episodes','seasons','search'].includes(page)){location.replace((page==='home'?'/':`/${page}/`)+(params.size?'?'+params:''));return;}
   if(!location.hash&&location.pathname==='/recent/')page='recent';
+  if(!location.hash&&location.pathname==='/search/')page='search';
   if(!location.hash){const native=location.pathname.split('/').filter(Boolean);if(native[0]==='series-category'&&seriesCategories[native[1]]){page='tv';params.set('region',seriesCategories[native[1]][0]);}if(native[0]==='series-genre'&&seriesGenres[native[1]]){page='tv';params.set('genre',String(seriesGenres[native[1]][0]));}}
   if(page==='movies'){const region=params.get('region');params.delete('region');const dest=region&&['foreign','asian','arabic','indian','turkish'].includes(region)?`/movies/${region}/`:'/movies/';location.replace(dest+(params.size?'?'+params:''));return;}
   if(page==='anime'||page==='tv'){

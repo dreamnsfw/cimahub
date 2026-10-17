@@ -7,6 +7,60 @@ const workspace = fileURLToPath(new URL('.', import.meta.url));
 const dataDirectory = fileURLToPath(new URL('./data/', import.meta.url));
 const pathname = value => value instanceof URL ? fileURLToPath(value) : Buffer.isBuffer(value) ? value.toString() : value;
 
+// Keep hot documents in this process briefly instead of downloading multi-megabyte
+// JSON bodies from PostgreSQL for every page. Other instances see edits within 2s;
+// writes through this adapter invalidate their paths immediately.
+const documentCache = new Map(), documentReads = new Map();
+const documentCacheLifetime = 2000, documentCacheByteLimit = 32 * 1024 * 1024, documentCacheEntryLimit = 128;
+let documentCacheBytes = 0, documentRevision = 0, documentDatabase;
+
+function forgetDocument(key) {
+  const cached = documentCache.get(key);
+  if (cached) documentCacheBytes -= cached.bytes;
+  documentCache.delete(key);
+  documentReads.delete(key);
+  documentRevision++;
+}
+
+function rememberDocument(key, body) {
+  const now = Date.now();
+  // Expired documents must not occupy the size budget indefinitely.
+  for (const [path, cached] of documentCache) if (cached.expires <= now) {
+    documentCache.delete(path); documentCacheBytes -= cached.bytes;
+  }
+  const bytes = key.length * 2 + 64 + (body === null ? 0 : Math.max(Buffer.byteLength(body), body.length * 2));
+  if (bytes > documentCacheByteLimit) return;
+  while (documentCache.size >= documentCacheEntryLimit || documentCacheBytes + bytes > documentCacheByteLimit) {
+    const [path, cached] = documentCache.entries().next().value;
+    documentCache.delete(path); documentCacheBytes -= cached.bytes;
+  }
+  documentCache.set(key, {body, bytes, expires: now + (body === null ? 1000 : documentCacheLifetime)});
+  documentCacheBytes += bytes;
+}
+
+async function documentBody(key) {
+  if (documentDatabase !== process.env.DATABASE_URL) {
+    documentCache.clear(); documentReads.clear(); documentCacheBytes = 0;
+    documentDatabase = process.env.DATABASE_URL; documentRevision++;
+  }
+  const cached = documentCache.get(key);
+  if (cached && cached.expires > Date.now()) {
+    documentCache.delete(key); documentCache.set(key, cached);
+    return cached.body;
+  }
+  if (cached) forgetDocument(key);
+  if (!documentReads.has(key)) {
+    const revision = documentRevision;
+    const pending = query('SELECT body FROM data_documents WHERE path=$1', [key]).then(({rows}) => {
+      const body = rows.length ? rows[0].body : null;
+      if (revision === documentRevision) rememberDocument(key, body);
+      return body;
+    }).finally(() => { if (documentReads.get(key) === pending) documentReads.delete(key); });
+    documentReads.set(key, pending);
+  }
+  return documentReads.get(key);
+}
+
 function dataPath(value, documentsOnly = false) {
   if (!dbEnabled()) return null;
   const path = pathname(value);
@@ -48,11 +102,11 @@ export async function readFile(path, options) {
   const key = dataPath(path, true);
   if (!key) return fs.readFile(path, options);
   checkSignal(options);
-  const {rows} = await query('SELECT body FROM data_documents WHERE path=$1', [key]);
-  if (!rows.length) throw filesystemError('ENOENT', 'open', path);
-  const body = Buffer.from(rows[0].body, 'utf8');
+  const body = await documentBody(key);
+  checkSignal(options);
+  if (body === null) throw filesystemError('ENOENT', 'open', path);
   const encoding = typeof options === 'string' ? options : options?.encoding;
-  return encoding ? body.toString(encoding) : body;
+  return encoding === 'utf8' || encoding === 'utf-8' ? body : encoding ? Buffer.from(body, 'utf8').toString(encoding) : Buffer.from(body, 'utf8');
 }
 
 export async function writeFile(path, data, options) {
@@ -63,25 +117,33 @@ export async function writeFile(path, data, options) {
   const body = typeof data === 'string' ? Buffer.from(data, encoding).toString('utf8') : Buffer.from(data).toString('utf8');
   const flag = typeof options === 'object' ? options.flag || 'w' : 'w';
   if (!['w', 'w+', 'wx', 'wx+', 'a', 'a+', 'ax', 'ax+'].includes(flag)) throw new TypeError(`Unsupported PostgreSQL document write flag: ${flag}`);
-  if (flag.includes('x')) {
-    const result = await query('INSERT INTO data_documents(path,body) VALUES($1,$2) ON CONFLICT DO NOTHING', [key, body]);
-    if (!result.rowCount) throw filesystemError('EEXIST', 'open', path);
-  } else {
-    await query(`INSERT INTO data_documents(path,body) VALUES($1,$2) ON CONFLICT(path) DO UPDATE SET body=${flag.startsWith('a') ? 'data_documents.body || EXCLUDED.body' : 'EXCLUDED.body'}, updated_at=clock_timestamp()`, [key, body]);
-  }
+  forgetDocument(key);
+  try {
+    if (flag.includes('x')) {
+      const result = await query('INSERT INTO data_documents(path,body) VALUES($1,$2) ON CONFLICT DO NOTHING', [key, body]);
+      if (!result.rowCount) throw filesystemError('EEXIST', 'open', path);
+    } else {
+      await query(`INSERT INTO data_documents(path,body) VALUES($1,$2) ON CONFLICT(path) DO UPDATE SET body=${flag.startsWith('a') ? 'data_documents.body || EXCLUDED.body' : 'EXCLUDED.body'}, updated_at=clock_timestamp()`, [key, body]);
+    }
+  } finally { forgetDocument(key); }
 }
 
 export async function rename(oldPath, newPath) {
   const oldKey = dataPath(oldPath, true), newKey = dataPath(newPath, true);
   if (!oldKey && !newKey) return fs.rename(oldPath, newPath);
   if (!oldKey || !newKey) throw filesystemError('EXDEV', 'rename', oldPath);
-  return transaction(async connection => {
-    const result = await connection.query('SELECT body,updated_at FROM data_documents WHERE path=$1 FOR UPDATE', [oldKey]);
-    if (!result.rows.length) throw filesystemError('ENOENT', 'rename', oldPath);
-    if (oldKey === newKey) return;
-    await connection.query('INSERT INTO data_documents(path,body,updated_at) VALUES($1,$2,$3) ON CONFLICT(path) DO UPDATE SET body=EXCLUDED.body,updated_at=EXCLUDED.updated_at', [newKey, result.rows[0].body, result.rows[0].updated_at]);
-    await connection.query('DELETE FROM data_documents WHERE path=$1', [oldKey]);
-  });
+  forgetDocument(oldKey); forgetDocument(newKey);
+  try {
+    return await transaction(async connection => {
+      const result = await connection.query('SELECT path FROM data_documents WHERE path=$1 FOR UPDATE', [oldKey]);
+      if (!result.rows.length) throw filesystemError('ENOENT', 'rename', oldPath);
+      if (oldKey === newKey) return;
+      // Move large JSON bodies inside PostgreSQL instead of downloading and then
+      // uploading the same body again for every atomic document replacement.
+      await connection.query('INSERT INTO data_documents(path,body,updated_at) SELECT $2,body,updated_at FROM data_documents WHERE path=$1 ON CONFLICT(path) DO UPDATE SET body=EXCLUDED.body,updated_at=EXCLUDED.updated_at', [oldKey, newKey]);
+      await connection.query('DELETE FROM data_documents WHERE path=$1', [oldKey]);
+    });
+  } finally { forgetDocument(oldKey); forgetDocument(newKey); }
 }
 
 // PostgreSQL documents need no physical directories in a read-only deployment.

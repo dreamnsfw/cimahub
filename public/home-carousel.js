@@ -26,7 +26,7 @@ export function homeCarousel(items){
    const anime=(m.genre_ids||m.genres?.map(g=>g.id)||[]).includes(16),tv=mediaType(m)==='tv';
    const label=anime?(tv?'مسلسل أنمي':'فيلم أنمي'):(tv?'مسلسل':'فيلم');
    return `<div class="home-carousel-slide${i===0?' is-active':''}" role="group" aria-roledescription="شريحة" aria-label="${i+1} من ${works.length}" aria-hidden="${i!==0}"${i!==0?' inert':''}>
-    <img class="hero-image home-carousel-image" src="${localImage(m.backdrop_path,'w1280')}" alt="" width="1280" height="720" ${i===0?'fetchpriority="high" loading="eager"':'loading="lazy"'}>
+    <img class="hero-image home-carousel-image" ${i===0?'src':'data-src'}="${localImage(m.backdrop_path,'w1280')}" alt="" width="1280" height="720" ${i===0?'fetchpriority="high" loading="eager"':'loading="lazy"'}>
     <div class="home-carousel-shade"></div><div class="home-carousel-content">
      <div class="home-carousel-eyebrow"><span></span>تحت الأضواء</div>
      <h2 dir="auto">${escape(name)}</h2>
@@ -53,18 +53,26 @@ export function enhanceHomeCarousel(root=document){
   if(slides.length<2||!controls)continue;
   const dots=[...element.querySelectorAll('[data-carousel-slide]')],pauseButton=element.querySelector('[data-carousel-pause]');
   const abort=new AbortController(),signal=abort.signal,reduced=matchMedia('(prefers-reduced-motion: reduce)'),blocked=new Set();
-  let index=0,timer,touchStart;
+  let index=0,timer,touchStart,request=0,loading=false;
   if(reduced.matches)blocked.add('motion');
   if(document.hidden)blocked.add('hidden');
   controls.hidden=false;
   const schedule=()=>{
    clearTimeout(timer);element.classList.remove('is-running');
-   if(blocked.size||!element.isConnected)return;
+   if(blocked.size||loading||!element.isConnected)return;
    element.classList.add('is-running');
    timer=setTimeout(()=>show(index+1),7000);
   };
-  const show=next=>{
+  const show=async next=>{
    index=(next+slides.length)%slides.length;
+   const current=++request,image=slides[index].querySelector('.home-carousel-image');
+   loading=true;schedule();
+   // Hidden slides overlap the viewport, so native lazy loading alone fetches them all.
+   if(image?.dataset.src){image.loading='eager';image.src=image.dataset.src;delete image.dataset.src;}
+   // Keep the current frame visible while the selected background is downloading.
+   try{await image?.decode?.();}catch{}
+   if(current!==request||!element.isConnected)return;
+   loading=false;
    slides.forEach((slide,i)=>{slide.classList.toggle('is-active',i===index);slide.setAttribute('aria-hidden',String(i!==index));slide.inert=i!==index;dots[i].setAttribute('aria-pressed',String(i===index));});
    element.querySelector('.home-carousel-count').textContent=`${String(index+1).padStart(2,'0')} / ${String(slides.length).padStart(2,'0')}`;
    schedule();

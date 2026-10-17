@@ -1,6 +1,7 @@
 import {dbEnabled, query} from './database.js';
 import {safeLink} from './qfilm-import.js';
 import {movieIdentityTitle} from './movie-presentation.js';
+import {isDeepStrictEqual} from 'node:util';
 
 const defaults = Object.freeze({
   site_name: 'سيما هَب', site_description: '', contact_email: '', maintenance: false,
@@ -57,33 +58,62 @@ function applyOverrides(item, row) {
 
 export async function rememberAndApply(data, fallbackType, {detail = false} = {}) {
   if (!dbEnabled()) return data;
-  async function visit(value, fallback, isDetail = false) {
-    if (!value || typeof value !== 'object') return value;
-    if (Array.isArray(value)) return (await Promise.all(value.map(item => visit(item, fallback)))).filter(Boolean);
-    if (Array.isArray(value.results)) return {...value, results: await visit(value.results, fallback)};
+  const incoming = new Map();
+  function collect(value, fallback) {
+    if (!value || typeof value !== 'object') return;
+    if (Array.isArray(value)) { for (const item of value) collect(item, fallback); return; }
+    if (Array.isArray(value.results)) { collect(value.results, fallback); return; }
     const key = workKey(value, fallback);
-    if (!key || (!value.title && !value.name)) return value;
-    const kind = key.split(':')[0], providerId = Number(value.id);
-    const path = String(value.public_path || '').match(/^\/([a-z0-9]+(?:-[a-z0-9]+)*)\/$/);
-    const slug = path?.[1] || null, name = value[kind === 'movie' ? 'title' : 'name'] || value.title || value.name;
+    if (!key || (!value.title && !value.name)) return;
+    const kind = key.split(':')[0], provider_id = Number(value.id);
+    const slug = String(value.public_path || '').match(/^\/([a-z0-9]+(?:-[a-z0-9]+)*)\/$/)?.[1] || null;
+    const name = String(value[kind === 'movie' ? 'title' : 'name'] || value.title || value.name);
     const year = String(value.release_date || value.first_air_date || '').slice(0, 4);
-    const {_adminSeo, ...snapshot} = value;
+    const {_adminSeo, ...snapshot} = value, previous = incoming.get(key);
+    incoming.set(key, {key, kind, provider_id, slug: previous?.slug || slug, name,
+      year: year || previous?.year || '', snapshot: {...previous?.snapshot, ...snapshot}});
+    if (value.recommendations) collect(value.recommendations, kind);
+  }
+  collect(data, fallbackType);
+
+  // Read current status and overrides once for the whole displayed collection.
+  // Unchanged provider snapshots need no UPDATE or updated_at/index churn.
+  const rowsByKey = new Map(incoming.size ? (await limitedQuery('SELECT * FROM content_items WHERE key=ANY($1::text[])', [[...incoming.keys()]])).rows.map(row => [row.key, row]) : []);
+  const changes = [];
+  for (const candidate of incoming.values()) {
+    candidate.snapshot = JSON.parse(JSON.stringify(candidate.snapshot));
+    const row = rowsByKey.get(candidate.key), manualName = own(row?.overrides, 'title') || own(row?.overrides, 'name');
+    if (!row || !isDeepStrictEqual({...row.snapshot, ...candidate.snapshot}, row.snapshot)
+      || (!manualName && row.name !== candidate.name)
+      || (candidate.year && row.year !== candidate.year) || (!row.slug && candidate.slug)) changes.push(candidate);
+  }
+  if (changes.length) {
     const {rows} = await limitedQuery(`
       INSERT INTO content_items(key,kind,provider_id,slug,name,year,snapshot)
-      VALUES($1,$2,$3,$4,$5,$6,$7::jsonb)
+      SELECT key,kind,provider_id,slug,name,year,snapshot
+      FROM jsonb_to_recordset($1::jsonb) AS incoming(key text,kind text,provider_id bigint,slug text,name text,year text,snapshot jsonb)
+      ORDER BY key
       ON CONFLICT(key) DO UPDATE SET
         snapshot=content_items.snapshot || EXCLUDED.snapshot,
         name=CASE WHEN content_items.overrides ? 'title' OR content_items.overrides ? 'name' THEN content_items.name ELSE EXCLUDED.name END,
         year=CASE WHEN EXCLUDED.year='' THEN content_items.year ELSE EXCLUDED.year END,
         slug=coalesce(content_items.slug,EXCLUDED.slug),updated_at=now()
-      RETURNING *`, [key, kind, providerId, slug, String(name), year, JSON.stringify(snapshot)]);
-    const row = rows[0];
+      RETURNING *`, [JSON.stringify(changes)]);
+    for (const row of rows) rowsByKey.set(row.key, row);
+  }
+  function visit(value, fallback, isDetail = false) {
+    if (!value || typeof value !== 'object') return value;
+    if (Array.isArray(value)) return value.map(item => visit(item, fallback)).filter(Boolean);
+    if (Array.isArray(value.results)) return {...value, results: visit(value.results, fallback)};
+    const key = workKey(value, fallback);
+    if (!key || (!value.title && !value.name)) return value;
+    const kind = key.split(':')[0], row = rowsByKey.get(key);
     if (row.status !== 'published') {
       if (isDetail) throw Object.assign(new Error('العمل غير موجود'), {status: 404});
       return null;
     }
     let result = applyOverrides({...row.snapshot, ...value}, row);
-    if (value.recommendations) result.recommendations = await visit(value.recommendations, kind);
+    if (value.recommendations) result.recommendations = visit(value.recommendations, kind);
     return result;
   }
   return visit(data, fallbackType, detail);

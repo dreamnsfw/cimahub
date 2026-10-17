@@ -4,13 +4,14 @@ import {categoriesPage,categoriesPath} from './directory-page.js';
 import {createAdultCategory} from './qfilm-category.js';
 import {createQfilmDiscovery} from './qfilm-discovery.js';
 import {syncFetchSignal} from './sync-execution.js';
-import {searchWithCatalog} from './catalog-search.js';
+import {searchWithCatalog,presentSearchResults,searchResultCards} from './catalog-search.js';
 import {cleanStory,cleanCredits,hasUnsupportedText} from './story-language.js';
 import {publicPages,collectionPage,homePage} from './site-seo.js';
 import {loadVideoRecord,readVideoThumbnail,videoMetadata,publishedVideoEntries,videoSitemapXml} from './video-seo.js';
 import {createSeoCatalog} from './seo-catalog.js';
 import {seriesPage} from './detail-seo.js';
 import {createImageCache} from './image-cache.js';
+import {createPublicAssetHandler} from './public-assets.js';
 import {localImage} from './public/media-images.js';
 import {categoryPaths,parseCategoryListing,categoryItems,categoryMetadata,categoryContent} from './category-seo.js';
 import {presentSeries as formatSeries} from './series-presentation.js';
@@ -32,6 +33,7 @@ import {createMovieTranslator} from './movie-translation.js';
 import {adultMovieCategory,movieSections, movieGenres, movieTopicSections, comingSoonMovieCategory, isFutureMovie, movieDisplayTitle, movieMetadata, parseMovieListing, listingContent, movieContent, sourceButtons, renderSeoPage, createMovieIndex, sitemapXml, escapeHtml} from './movie-seo.js';
 
 const root = fileURLToPath(new URL('./public/', import.meta.url));
+const servePublicAsset = createPublicAssetHandler(root);
 const serverless = Boolean(process.env.VERCEL);
 const siteTemplate=async()=>{const settings=await currentSettings();let html=withSiteNavigation(await readFile(path.join(root,'index.html'),'utf8'));if(settings.site_name!=='سيما هَب')html=html.replace(/سيما هَب/g,escapeHtml(settings.site_name));if(settings.site_name!=='سيما هَب')html=html.replace(/(<a class="brand"[^>]*>)[\s\S]*?(<\/a>)/,(_,start,end)=>start+'<span class="brand-icon">▶</span><span>'+escapeHtml(settings.site_name)+'</span>'+end);if(settings.header_notice)html=html.replace('</header>','</header><div class="content" role="status">'+escapeHtml(settings.header_notice)+'</div>');if(settings.contact_email)html=html.replace('</footer>','<a href="mailto:'+escapeHtml(settings.contact_email)+'">تواصل معنا</a></footer>');return html;};
 const cache = new Map();
@@ -157,10 +159,11 @@ async function tmdb(endpoint, params) {
 }
 
 async function searchData(params){
- return searchWithCatalog({query:params.get('query'),page:Number(params.get('page')||1),
-  remote:(query,page)=>tmdb('search/multi',new URLSearchParams({...Object.fromEntries(params),query,page:String(page)})),
+ const data=await searchWithCatalog({query:params.get('query'),page:Number(params.get('page')||1),
+  remote:(query,page)=>tmdb('search/multi',new URLSearchParams({...Object.fromEntries(params),language:'en-US',query,page:String(page)})),
   works:()=>seoCatalog.all(),
-  load:record=>tmdb(`${record.type}/${record.id}`,new URLSearchParams({language:'ar-SA'}))});
+  load:record=>tmdb(`${record.type}/${record.id}`,new URLSearchParams({language:'en-US'}))});
+ return searchResultCards(await seoCatalog.decorate(presentSearchResults(data)));
 }
 async function recentData(requestedPage){
         const requested=Number(requestedPage||1);
@@ -209,6 +212,7 @@ const adminApi=createAdminApi({origin:siteOrigin,onChange:applyAdministration,lo
 },awaitJobs:serverless,jobs:{sources:{label:'تحديث سيرفرات الأفلام',run:()=>linkSync.tick(serverless?{maxJobs:1,maxCandidates:2,throwOnError:true}:{})},discovery:{label:'اكتشاف الأفلام الجديدة',run:()=>sourceDiscovery.tick(serverless?{maxJobs:1,maxDiscoveryPages:2,throwOnError:true}:{})},adult:{label:'تحديث فئة +18',run:async()=>{const value=await adultCategory.refresh(serverless?{maxPages:1}:{});return {sourceCount:value.sourceCount,nextPage:value.refreshCursor||1};}}}});
 
 export async function handleRequest(req, res) {
+  res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('X-Frame-Options', 'DENY');
@@ -221,6 +225,8 @@ export async function handleRequest(req, res) {
     }
     res.writeHead(status, {'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store'}); res.end(req.method==='HEAD'?undefined:JSON.stringify(data));
   };
+  try { if(await servePublicAsset(req,res,new URL(req.url,'http://localhost').pathname))return; }
+  catch { return json(400,{error:'عنوان الصفحة غير صالح'}); }
   try{await initializeAdministration();}catch{return json(503,{error:'تعذر الاتصال بقاعدة بيانات الموقع'});}
   if(req.url.startsWith('/admin')||req.url.startsWith('/api/admin/')){try{if(await adminApi.handle(req,res,new URL(req.url,'http://localhost')))return;}catch{return json(503,{error:'تعذر الاتصال بقاعدة بيانات الإدارة'});}}
   if (!['GET', 'HEAD'].includes(req.method)) return json(405, {error: 'الطلب غير مدعوم'});
@@ -444,7 +450,12 @@ export async function handleRequest(req, res) {
       let route;
       try { route = routeApi(url); } catch (error) { return json(400, {error: error.message}); }
       if (!route) return json(404, {error: 'الصفحة غير موجودة'});
-      let data = route.endpoint==='search/multi'?await searchData(route.params):await tmdb(route.endpoint, route.params);
+      if(route.endpoint==='search/multi'){
+        const data=await searchData(route.params);
+        if(Number.isFinite(data.total_pages))data.total_pages=Math.min(data.total_pages,MAX_LISTING_PAGES);
+        return json(200,data);
+      }
+      let data = await tmdb(route.endpoint, route.params);
       const seasonRoute=route.endpoint.match(/^tv\/(\d+)\/season\/(\d+)$/);
       if(seasonRoute){if(dbEnabled()&&(await query('SELECT status FROM content_items WHERE key=$1',['tv:'+seasonRoute[1]])).rows[0]?.status!=='published')return json(404,{error:'العمل غير موجود'});data=await applySeasonParts(data,'tv:'+seasonRoute[1],Number(seasonRoute[2]));}
       if (route.endpoint.match(/^(movie|tv)\/\d+$/) && !data.videos?.results?.length) {
@@ -514,32 +525,28 @@ export async function handleRequest(req, res) {
           else{
             const endpoint=search?'search/multi':`discover/${type}`;
             const params=new URLSearchParams({language:'ar-SA',include_adult:'false',page:String(n),...(search?{query:q}:{sort_by:'vote_average.desc','vote_count.gte':'200'})});
-            const raw=search?await searchData(params):await tmdb(endpoint,params);
-            data=await present(raw,endpoint);data.total_pages=Math.min(data.total_pages||1,MAX_LISTING_PAGES);
+            data=search?await searchData(params):await present(await tmdb(endpoint,params),endpoint);
+            data.total_pages=Math.min(data.total_pages||1,MAX_LISTING_PAGES);
           }
         }
         data.total_pages=Math.min(data.total_pages||1,MAX_LISTING_PAGES);
         if(n>data.total_pages)return json(404,{error:'الصفحة غير موجودة'});
         page=collectionPage(url.pathname,data,siteOrigin,url.searchParams);
         const requestPath=listingRequestPath(url,page.metadata.canonical.slice(siteOrigin.length));
-        if(url.pathname+url.search!==requestPath)return redirect(requestPath);
+        // Hosts can reconstruct spaces as %20 even when the browser sent +.
+        // Compare decoded search parameters to avoid redirecting to the same URL.
+        const actualPath=url.pathname==='/search/'?url.pathname+(url.searchParams.size?'?'+url.searchParams:''):url.pathname+url.search;
+        if(actualPath!==requestPath)return redirect(requestPath);
       }
       const template=await siteTemplate();
       return send(200,renderSeoPage(template,page.metadata,page.content,page.items).replace('data-server-rendered="true"',`data-server-rendered="true" data-page-kind="${url.pathname==='/'?'home':url.pathname.split('/')[1]}"`));
     }
-    const assets = {'/title-markup.js':'title-markup.js','/home-carousel.js':'home-carousel.js','/media-links.js':'media-links.js','/media-images.js':'media-images.js','/filter-controls.js':'filter-controls.js','/recent/':'index.html','/pagination.js':'pagination.js','/fonts/DroidKufi-Regular.ttf': 'fonts/DroidKufi-Regular.ttf', '/': 'index.html', '/index.html': 'index.html', '/app.js': 'app.js', '/navigation.js': 'navigation.js', '/styles.css': 'styles.css', '/favicon.svg': 'favicon.svg'};
-    const filename = assets[url.pathname];
-    if (!filename) return json(404, {error: 'الصفحة غير موجودة'});
-    const body = filename==='index.html'?await siteTemplate():await readFile(path.join(root, filename));
-    const mime = {'.ttf': 'font/ttf', '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml'};
-    res.writeHead(200, {'Content-Type': mime[path.extname(filename)], 'Cache-Control': 'no-cache'});
-    res.end(req.method === 'HEAD' ? undefined : body);
+    return json(404, {error: 'الصفحة غير موجودة'});
   } catch (error) { json(error instanceof URIError?400:error.status || 502, {error: error instanceof URIError?'عنوان الصفحة غير صالح':error.status ? error.message : 'تعذّر الاتصال بخدمة الأفلام. حاول مجددًا.'}); }
 }
 export const server = http.createServer(handleRequest);
 server.on('listening',()=>{if(serverless)return;if(dbEnabled())void initializeAdministration().catch(e=>console.warn('Administration startup:',e.code||'unavailable'));else if(process.env.TMDB_API_KEY){void linkSync.start().catch(e=>console.warn('Link sync:',e.message));sourceDiscovery.start();}});
 server.on('close',()=>{clearInterval(scheduledSync);linkSync.stop();sourceDiscovery.stop();});
 if (!serverless && process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  await initializeAdministration();
   server.listen(Number(process.env.PORT) || 3000, process.env.HOST || '127.0.0.1', () => console.log(`CimaHub ready at http://${process.env.HOST || '127.0.0.1'}:${process.env.PORT || 3000}`));
 }

@@ -75,6 +75,9 @@ test('manual content changes survive automatic refreshes and sources stay within
   const item = {id, media_type: 'movie', title: 'Automatic name', overview: 'Automatic story', release_date: '2020-01-01', public_path: `/${slug}/`};
   try {
     await rememberAndApply(item, 'movie', {detail: true});
+    await query("UPDATE content_items SET updated_at='2020-01-01T00:00:00Z' WHERE key=$1", [key]);
+    await rememberAndApply({results: [item, item]}, 'movie');
+    assert.equal((await query('SELECT updated_at FROM content_items WHERE key=$1', [key])).rows[0].updated_at.toISOString(), '2020-01-01T00:00:00.000Z');
     await query('UPDATE content_items SET name=$2,slug=$3,overrides=$4::jsonb WHERE key=$1', [key, 'Manual name', manualSlug, JSON.stringify({title: 'Manual name', overview: 'Manual story', seo_title: 'Manual SEO title', noindex: true})]);
     const refreshed = await rememberAndApply({...item, title: 'New automatic name', overview: 'New automatic story'}, 'movie', {detail: true});
     assert.equal(refreshed.title, 'Manual name');

@@ -23,7 +23,17 @@ export function createSeoCatalog(directory=new URL('./data/',import.meta.url)){
    if(JSON.stringify(state.collections[url.pathname])!==JSON.stringify(next)){state.collections[url.pathname]=next;await persist();}
   });},
   async imageSource(name){await queue;return (await load()).images[name]?.source;},
-  mark(item,metadata){return serial(async()=>{await load();const record=state.works[`${item.media_type|| (item.name?'tv':'movie')}:${item.id}`];if(record){const path=decodeURI(new URL(metadata.canonical).pathname);const hash=createHash('sha256').update(JSON.stringify([metadata.title,metadata.description,item.poster_path])).digest('hex');const previous=state.pages[path];state.pages[path]={path,indexable:!metadata.noindex,title:metadata.title,description:metadata.description,poster:item.poster_path,hash,lastmod:previous?.hash===hash?previous.lastmod:new Date().toISOString()};if(path===`/${record.slug}/`){record.indexable=!metadata.noindex;record.description=metadata.description;record.title=metadata.title;}await persist();}});},
+  mark(item,metadata){return serial(async()=>{
+   await load();const record=state.works[`${item.media_type|| (item.name?'tv':'movie')}:${item.id}`];if(!record)return;
+   const path=decodeURI(new URL(metadata.canonical).pathname),hash=createHash('sha256').update(JSON.stringify([metadata.title,metadata.description,item.poster_path])).digest('hex');
+   const previous=state.pages[path],next={path,indexable:!metadata.noindex,title:metadata.title,description:metadata.description,poster:item.poster_path,hash,lastmod:previous?.hash===hash?previous.lastmod:new Date().toISOString()};
+   let changed=JSON.stringify(previous)!==JSON.stringify(next);
+   if(changed)state.pages[path]=next;
+   if(path===`/${record.slug}/`)for(const [field,value] of Object.entries({indexable:!metadata.noindex,description:metadata.description,title:metadata.title})){
+    if(record[field]!==value){record[field]=value;changed=true;}
+   }
+   if(changed)await persist();
+  });},
   decorate(data,fallbackType){return serial(async()=>{
    await load();let changed=false;
    function visit(item,fallback){
@@ -65,7 +75,7 @@ export function createSeoCatalog(directory=new URL('./data/',import.meta.url)){
     if(item.recommendations)result.recommendations=visit(item.recommendations,type);
     return result;
    }
-   const result=visit(data,fallbackType);if(changed)await persist();return rememberAndApply(result,fallbackType);
-  });},
+   const result=visit(data,fallbackType);if(changed)await persist();return result;
+  }).then(result=>rememberAndApply(result,fallbackType));},
  };
 }

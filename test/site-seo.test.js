@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {mkdtemp,unlink,rmdir,readFile,writeFile} from 'node:fs/promises';
+import {mkdtemp,unlink,rmdir,readFile,writeFile,stat,utimes} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import {join} from 'node:path';
 import {pathToFileURL} from 'node:url';
@@ -37,6 +37,21 @@ test('legacy non-English slugs migrate to English without preserving old page al
   assert.equal(await catalog.imageSource('妖獣都市-1987-poster.jpg'),'/hash.jpg');
   assert.equal(await createSeoCatalog(url).resolve('妖獣都市-1987'),undefined);
  }finally{await unlink(join(directory,'seo-catalog.json'));await rmdir(directory);}
+});
+
+test('repeated page views leave the catalog file untouched while indexing changes still persist',async()=>{
+ const directory=await mkdtemp(join(tmpdir(),'cimahub-catalog-mark-')),url=pathToFileURL(directory+'/'),file=new URL('seo-catalog.json',url);
+ try{
+  const catalog=createSeoCatalog(url),item=await catalog.decorate({id:44,title:'Stable Movie',poster_path:'/stable.jpg'});
+  const metadata={canonical:'https://example.test/stable-movie/',title:'Stable title',description:'Stable description'};
+  await catalog.mark(item,metadata);
+  const timestamp=new Date('2020-01-01T00:00:00Z');await utimes(file,timestamp,timestamp);
+  await catalog.mark(item,metadata);
+  assert.equal((await stat(file)).mtimeMs,+timestamp,'an unchanged view must not rewrite the full catalog');
+  await catalog.mark(item,{...metadata,noindex:true});
+  assert.equal(JSON.parse(await readFile(file,'utf8')).pages['/stable-movie/'].indexable,false);
+  assert.notEqual((await stat(file)).mtimeMs,+timestamp);
+ }finally{await unlink(file);await rmdir(directory);}
 });
 test('TV, seasons and episodes have distinct canonical URLs, stories and structured data',()=>{
  const m={id:1434,name:'Family Guy',original_name:'Family Guy',first_air_date:'1999-01-31',original_language:'en',genres:[{id:16,name:'أنمي'}],public_path:'/family-guy-1999/',overview:'قصة المسلسل',seasons:[{season_number:1}]};
