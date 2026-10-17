@@ -32,6 +32,7 @@ test('every sitemap permits native XML viewer styles while blocking scripts and 
     assert.match(res.headers['content-type'],/^application\/xml/);
     assert.match(res.body,/^<\?xml version="1\.0" encoding="UTF-8"\?>/);
     assert.match(res.headers['content-security-policy'],/default-src 'none'; style-src 'unsafe-inline';/);
+    assert.match(res.headers['content-security-policy'],/img-src data:;/);
     assert.doesNotMatch(res.headers['content-security-policy'],/script-src|https?:/);
     const head=await response(path,'HEAD');
     assert.equal(head.status,200,path);

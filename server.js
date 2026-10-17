@@ -238,7 +238,7 @@ export async function handleRequest(req, res) {
     const send = (status, body, type='text/html; charset=utf-8') => {
       // Chrome's XML viewer needs inline styles to hide the unformatted source.
       // Allow them only on XML responses; scripts and other resources stay blocked.
-      if(type.startsWith('application/xml'))res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
+      if(type.startsWith('application/xml'))res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
       if(status===200&&type.startsWith('text/html')&&process.env.TMDB_API_KEY){
         if(pageCache.size>=100)pageCache.delete(pageCache.keys().next().value);
         pageCache.set(pageKey,{body,csp:res.getHeader('Content-Security-Policy'),expires:Date.now()+60000});
