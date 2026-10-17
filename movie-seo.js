@@ -10,7 +10,6 @@ import {workTitleMarkup} from './public/title-markup.js';
 export const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const e = escapeHtml;
 export const moviePath = id => `/movie/${Number(id)}/`;
-const currentYear = new Date().getFullYear();
 export const adultMovieCategory={path:'/movies/18-plus/',name:'أفلام للكبار فقط +18',heading:'أفلام للكبار فقط +18',title:'مشاهدة أفلام للكبار فقط +18 مترجمة HD اون لاين',description:'مشاهدة وتحميل أفلام للكبار فقط +18 مترجمة بجودة HD على سيما هَب، مع أفلام أجنبي وعربي لا تصلح للمشاهدة العائلية وسيرفرات المشاهدة وروابط التحميل المتاحة.'};
 export const movieTopicSections={biography:{path:'/movies/genre/biography/',label:'سيرة ذاتية',name:'أفلام سيرة ذاتية',heading:'أفلام سيرة ذاتية',title:'أفلام سيرة ذاتية — قصص الشخصيات وتفاصيل الأفلام',description:'تصفح أفلام السيرة الذاتية التي تتناول حياة شخصيات ومجموعات محددة، مع قصص الأفلام وأبطالها وتفاصيلها على سيما هَب.',keyword:5565}};
 export const comingSoonMovieCategory={path:'/movies/coming-soon/',label:'يعرض قريبًا',name:'أفلام تعرض قريبًا',heading:'أفلام تعرض قريبًا',title:'أفلام تعرض قريبًا — مواعيد الإصدار والإعلانات التشويقية',description:'تصفح الأفلام ذات موعد إصدار أساسي معلن خلال الأيام الـ180 المقبلة، مع القصص والأبطال والإعلانات التشويقية. قد تتغير المواعيد وتختلف حسب البلد.'};
@@ -35,43 +34,48 @@ export function movieDisplayTitle(m){
 }
 export const moviePosterBadge=m=>isFutureMovie(m)?'<span class="poster-upcoming">قريبًا</span>':'';
 const announcedRelease=m=>`<time datetime="${e(m.release_date)}">${e(m.release_date)}</time>`;
-export const movieSections = {
+const movieSectionDefinitions = {
   foreign: {
     name:'أفلام أجنبية مترجمة',
     heading:'أفلام أجنبي مترجمة',
-    title:`مشاهدة أفلام أجنبي ${currentYear} مترجمة كاملة HD اون لاين`,
+    title:year=>`مشاهدة أفلام أجنبي ${year} مترجمة كاملة HD اون لاين`,
     language:'en',
-    description:`مشاهدة وتحميل أحدث أفلام أجنبي ${currentYear} مترجمة كاملة بجودة عالية HD اون لاين على سيما هَب. مكتبة متجددة لأقوى أفلام الأكشن والرعب والخيال العلمي بروابط مباشرة.`
+    description:year=>`مشاهدة وتحميل أحدث أفلام أجنبي ${year} مترجمة كاملة بجودة عالية HD اون لاين على سيما هَب. مكتبة متجددة لأقوى أفلام الأكشن والرعب والخيال العلمي بروابط مباشرة.`
   },
   asian: {
     name:'أفلام آسيوية مترجمة',
     heading:'أفلام آسيوية مترجمة',
-    title:`مشاهدة أفلام آسيوية كورية ويابانية ${currentYear} مترجمة HD اون لاين`,
+    title:year=>`مشاهدة أفلام آسيوية كورية ويابانية ${year} مترجمة HD اون لاين`,
     language:'ko|ja|zh|cn|th',
-    description:`مشاهدة وتحميل أحدث الأفلام الآسيوية الكورية واليابانية والصينية ${currentYear} مترجمة كاملة بجودة عالية HD اون لاين على سيما هَب، مع قصص الأفلام وتقييماتها.`
+    description:year=>`مشاهدة وتحميل أحدث الأفلام الآسيوية الكورية واليابانية والصينية ${year} مترجمة كاملة بجودة عالية HD اون لاين على سيما هَب، مع قصص الأفلام وتقييماتها.`
   },
   arabic: {
     name:'أفلام عربية',
     heading:'أفلام عربي جديدة',
-    title:`مشاهدة أفلام عربي جديدة ${currentYear} كاملة HD اون لاين`,
+    title:year=>`مشاهدة أفلام عربي جديدة ${year} كاملة HD اون لاين`,
     language:'ar',
-    description:`مشاهدة وتحميل أحدث الأفلام العربية والمصرية ${currentYear} كاملة بجودة عالية HD اون لاين على سيما هَب. أفلام كوميدية ودراما وأكشن بروابط وسيرفرات مباشرة.`
+    description:year=>`مشاهدة وتحميل أحدث الأفلام العربية والمصرية ${year} كاملة بجودة عالية HD اون لاين على سيما هَب. أفلام كوميدية ودراما وأكشن بروابط وسيرفرات مباشرة.`
   },
   indian: {
     name:'أفلام هندية مترجمة',
     heading:'أفلام هندية مترجمة',
-    title:`مشاهدة أفلام هندية ${currentYear} مترجمة أكشن ورومانسية HD اون لاين`,
+    title:year=>`مشاهدة أفلام هندية ${year} مترجمة أكشن ورومانسية HD اون لاين`,
     language:'hi|te|ta|ml|kn|bn|mr|pa',
-    description:`مشاهدة وتحميل أحدث أفلام بوليوود والسينما الهندية ${currentYear} مترجمة كاملة بجودة عالية HD اون لاين على سيما هَب، أقوى أفلام الأكشن والرومانسية والتشويق الهندية.`
+    description:year=>`مشاهدة وتحميل أحدث أفلام بوليوود والسينما الهندية ${year} مترجمة كاملة بجودة عالية HD اون لاين على سيما هَب، أقوى أفلام الأكشن والرومانسية والتشويق الهندية.`
   },
   turkish: {
     name:'أفلام تركية مترجمة',
     heading:'أفلام تركية مترجمة',
-    title:`مشاهدة أفلام تركية ${currentYear} مترجمة رومانسية وتشويق HD اون لاين`,
+    title:year=>`مشاهدة أفلام تركية ${year} مترجمة رومانسية وتشويق HD اون لاين`,
     language:'tr',
-    description:`مشاهدة وتحميل أحدث الأفلام التركية ${currentYear} مترجمة كاملة بجودة عالية HD اون لاين على سيما هَب، أفلام درامية ورومانسية وتشويق مع قصة كل فيلم.`
+    description:year=>`مشاهدة وتحميل أحدث الأفلام التركية ${year} مترجمة كاملة بجودة عالية HD اون لاين على سيما هَب، أفلام درامية ورومانسية وتشويق مع قصة كل فيلم.`
   },
 };
+export const movieSections=Object.fromEntries(Object.entries(movieSectionDefinitions).map(([key,{title,description,...section}])=>[key,{
+  ...section,
+  get title(){return title(new Date().getFullYear());},
+  get description(){return description(new Date().getFullYear());}
+}]));
 export const movieGenres = {action:[28,'أكشن'],adventure:[12,'مغامرات'],comedy:[35,'كوميديا'],crime:[80,'جريمة'],drama:[18,'دراما'],fantasy:[14,'فانتازيا'],horror:[27,'رعب'],mystery:[9648,'غموض'],romance:[10749,'رومانسية'],'sci-fi':[878,'خيال علمي'],thriller:[53,'إثارة'],documentary:[99,'وثائقية'],family:[10751,'عائلية'],history:[36,'تاريخية'],war:[10752,'حرب'],music:[10402,'موسيقية']};
 const genrePath = id => {const match=Object.entries(movieGenres).find(([,value])=>value[0]===id);return match?`/movies/genre/${match[0]}/`:null;};
 const sectionKey = language => Object.keys(movieSections).find(key=>movieSections[key].language.split('|').includes(language));
@@ -146,7 +150,7 @@ export function movieMetadata(m, origin) {
 }
 
 export function parseMovieListing(url,now=new Date()) {
-  const path=url.pathname;
+  const path=url.pathname,currentYear=now.getFullYear();
   let name='الأفلام',heading='مشاهدة أحدث الأفلام',title=`مشاهدة أحدث الأفلام ${currentYear} عربي وأجنبي مترجمة كاملة HD اون لاين`,description=`مشاهدة وتحميل أحدث أفلام ${currentYear} الأجنبية والعربية والآسيوية والهندية كاملة بجودة عالية HD اون لاين على سيما هَب، مع سيرفرات المشاهدة وروابط التحميل المباشرة.`,section;
   const params=new URLSearchParams({language:'ar-SA',include_adult:'false',include_video:'false',without_genres:'16','vote_count.gte':'10'});
   let match;
@@ -161,11 +165,11 @@ export function parseMovieListing(url,now=new Date()) {
     params.delete('vote_count.gte');
   }
   else if((match=path.match(/^\/movies\/([a-z]+)\/$/)) && movieSections[match[1]]){
-    section=movieSections[match[1]];
+    section=movieSectionDefinitions[match[1]];
     name=section.name;
     heading=section.heading||section.name;
-    title=section.title||`${section.name} | سيما هَب`;
-    description=section.description;
+    title=section.title(currentYear);
+    description=section.description(currentYear);
     params.set('with_original_language',section.language);
   }
   else if((match=path.match(/^\/movies\/genre\/([a-z-]+)\/$/)) && movieGenres[match[1]]){
@@ -220,11 +224,12 @@ function card(m,{comingSoon=false}={}) {
   const rating=!preview||Number(m.vote_count)>0&&Number(m.vote_average)>0?`<span class="poster-rating">★ ${Number(m.vote_average||0).toFixed(1)}</span>`:'';
   return `<article class="card movie-card"><a class="poster-link" href="${(m.public_path||moviePath(m.id))}" title="${e(name)}" aria-label="${e(name)}">${image(m.poster_path)?`<img src="${image(m.poster_path)}" alt="${e(name)}" loading="lazy" width="300" height="450">`:posterPlaceholder(m.title||m.name,(m.release_date||m.first_air_date||'').slice(0,4))}${moviePosterBadge(m)}${rating}</a><h3><a href="${(m.public_path||moviePath(m.id))}" dir="rtl">${workTitleMarkup(name,m)}</a></h3></article>`;
 }
-export function listingContent(listing,data) {
+export function listingContent(listing,data,now=new Date()) {
+  const currentYear=now.getFullYear();
   const result=uniqueMovies(data.results.filter(m=>{
     if(listing.adultAudience)return m.source_adult_category===true&&!m.adult;
     if(!usesMoviePresentation(m,'movie')||m.adult)return false;
-    return !listing.comingSoon||isFutureMovie(m)&&m.release_date>=listing.params.get('primary_release_date.gte')&&m.release_date<=listing.params.get('primary_release_date.lte');
+    return !listing.comingSoon||isFutureMovie(m,now)&&m.release_date>=listing.params.get('primary_release_date.gte')&&m.release_date<=listing.params.get('primary_release_date.lte');
   }));
   const currentSection=Object.keys(movieSections).find(key=>movieSections[key].language===listing.params.get('with_original_language'))||'';
   const options=(values,current)=>values.map(([key,name])=>`<option value="${key}" ${String(key)===String(current)?'selected':''}>${name}</option>`).join('');
