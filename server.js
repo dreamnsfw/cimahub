@@ -236,6 +236,9 @@ export async function handleRequest(req, res) {
     if(settings.maintenance&&!url.pathname.startsWith('/uploads/')&&!url.pathname.endsWith('.css')&&!url.pathname.endsWith('.js')){res.writeHead(503,{'Content-Type':'text/html; charset=utf-8','Retry-After':'3600','Cache-Control':'no-store'});return res.end('<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="robots" content="noindex"><title>'+escapeHtml(settings.site_name)+'</title><body><h1>'+escapeHtml(settings.maintenance_message)+'</h1></body></html>');}
     const pageKey=url.pathname+url.search;
     const send = (status, body, type='text/html; charset=utf-8') => {
+      // Chrome's XML viewer needs inline styles to hide the unformatted source.
+      // Allow them only on XML responses; scripts and other resources stay blocked.
+      if(type.startsWith('application/xml'))res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
       if(status===200&&type.startsWith('text/html')&&process.env.TMDB_API_KEY){
         if(pageCache.size>=100)pageCache.delete(pageCache.keys().next().value);
         pageCache.set(pageKey,{body,csp:res.getHeader('Content-Security-Policy'),expires:Date.now()+60000});
