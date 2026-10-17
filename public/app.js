@@ -224,6 +224,7 @@ $('#modal-close').addEventListener('click',()=>modal.close());modal.addEventList
 window.addEventListener('hashchange',()=>{if(location.hash.startsWith('#/')||!main.dataset.serverRendered)renderRoute();});
 function handleImageError(event){
  const img=event.target;if(img.tagName!=='IMG')return;
+ if(img.dataset.src&&!img.getAttribute('src'))return;
  if(img.classList.contains('hero-image')||img.classList.contains('film-backdrop')){img.remove();return;}
  if(img.classList.contains('movie-cover')){img.closest('.film-masthead')?.classList.add('film-masthead--no-cover');(img.closest('.movie-cover-wrap')||img).remove();return;}
  const fallback=document.createElement('span');
