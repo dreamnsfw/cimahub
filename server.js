@@ -11,6 +11,7 @@ import {loadVideoRecord,readVideoThumbnail,videoMetadata,publishedVideoEntries,v
 import {createSeoCatalog} from './seo-catalog.js';
 import {seriesPage} from './detail-seo.js';
 import {createImageCache} from './image-cache.js';
+import {createImageSourceResolver} from './image-source.js';
 import {createPublicAssetHandler} from './public-assets.js';
 import {localImage} from './public/media-images.js';
 import {categoryPaths,parseCategoryListing,categoryItems,categoryMetadata,categoryContent} from './category-seo.js';
@@ -57,7 +58,7 @@ const presentSeries=async (...args)=>{
  return /\/season\//.test(args[1])?data:seoCatalog.decorate(data);
 };
 const applyMoviePresentation=formatMovies;
-const cachedImage=createImageCache({sourceFor:async name=>await seoCatalog.imageSource(name)||(/^[-a-zA-Z0-9_]+\.(jpg|png|webp)$/.test(name)?'/'+name:null)});
+const cachedImage=createImageCache({sourceFor:createImageSourceResolver({catalog:seoCatalog,load:tmdb})});
 const pendingRequests = new Map();
 const clients = new Map();
 const movieIndex = createMovieIndex();
