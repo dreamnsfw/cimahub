@@ -166,6 +166,7 @@ async function searchData(params){
  return searchResultCards(await seoCatalog.decorate(presentSearchResults(data)));
 }
 async function recentData(requestedPage){
+        const pageSize=20;
         const requested=Number(requestedPage||1);
         if(!Number.isInteger(requested)||requested<1||requested>MAX_LISTING_PAGES)throw Object.assign(new Error('رقم صفحة غير صالح'),{status:400});
         const today=new Date().toISOString().slice(0,10);
@@ -545,7 +546,10 @@ export async function handleRequest(req, res) {
       return send(200,renderSeoPage(template,page.metadata,page.content,page.items).replace('data-server-rendered="true"',`data-server-rendered="true" data-page-kind="${url.pathname==='/'?'home':url.pathname.split('/')[1]}"`));
     }
     return json(404, {error: 'الصفحة غير موجودة'});
-  } catch (error) { json(error instanceof URIError?400:error.status || 502, {error: error instanceof URIError?'عنوان الصفحة غير صالح':error.status ? error.message : 'تعذّر الاتصال بخدمة الأفلام. حاول مجددًا.'}); }
+  } catch (error) {
+    if(!(error instanceof URIError)&&(!error.status||error.status>=500))console.error('Public request failed',JSON.stringify({path:req.url.split('?')[0],name:error.name,code:error.code,stack:error.stack?.split('\n').slice(1,5).map(line=>line.replace(/https?:\/\/\S+/g,'[remote URL]'))}));
+    json(error instanceof URIError?400:error.status || 502, {error: error instanceof URIError?'عنوان الصفحة غير صالح':error.status ? error.message : 'تعذّر الاتصال بخدمة الأفلام. حاول مجددًا.'});
+  }
 }
 export const server = http.createServer(handleRequest);
 server.on('listening',()=>{if(serverless)return;if(dbEnabled())void initializeAdministration().catch(e=>console.warn('Administration startup:',e.code||'unavailable'));else if(process.env.TMDB_API_KEY){void linkSync.start().catch(e=>console.warn('Link sync:',e.message));sourceDiscovery.start();}});
