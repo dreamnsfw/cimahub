@@ -2,6 +2,7 @@ import * as fs from 'node:fs/promises';
 import {fileURLToPath} from 'node:url';
 import {relative, resolve, sep, isAbsolute} from 'node:path';
 import {dbEnabled, query, transaction} from './database.js';
+import {d1Enabled,d1Request} from './d1-client.js';
 
 const workspace = fileURLToPath(new URL('.', import.meta.url));
 const dataDirectory = fileURLToPath(new URL('./data/', import.meta.url));
@@ -39,6 +40,7 @@ function rememberDocument(key, body) {
 }
 
 async function documentBody(key) {
+  if(d1Enabled())return d1Request('document.read',{path:key});
   if (documentDatabase !== process.env.DATABASE_URL) {
     documentCache.clear(); documentReads.clear(); documentCacheBytes = 0;
     documentDatabase = process.env.DATABASE_URL; documentRevision++;
@@ -117,6 +119,10 @@ export async function writeFile(path, data, options) {
   const body = typeof data === 'string' ? Buffer.from(data, encoding).toString('utf8') : Buffer.from(data).toString('utf8');
   const flag = typeof options === 'object' ? options.flag || 'w' : 'w';
   if (!['w', 'w+', 'wx', 'wx+', 'a', 'a+', 'ax', 'ax+'].includes(flag)) throw new TypeError(`Unsupported PostgreSQL document write flag: ${flag}`);
+  if(d1Enabled()){
+    try{return await d1Request('document.write',{path:key,body,exclusive:flag.includes('x'),append:flag.startsWith('a')});}
+    catch(error){if(error.code==='D1_GATEWAY_409')throw filesystemError('EEXIST','open',path);throw error;}
+  }
   forgetDocument(key);
   try {
     if (flag.includes('x')) {
@@ -132,6 +138,10 @@ export async function rename(oldPath, newPath) {
   const oldKey = dataPath(oldPath, true), newKey = dataPath(newPath, true);
   if (!oldKey && !newKey) return fs.rename(oldPath, newPath);
   if (!oldKey || !newKey) throw filesystemError('EXDEV', 'rename', oldPath);
+  if(d1Enabled()){
+    try{return await d1Request('document.rename',{from:oldKey,to:newKey});}
+    catch(error){if(error.code==='D1_GATEWAY_404')throw filesystemError('ENOENT','rename',oldPath);throw error;}
+  }
   forgetDocument(oldKey); forgetDocument(newKey);
   try {
     return await transaction(async connection => {
@@ -155,6 +165,7 @@ export async function mkdir(path, options) {
 export async function stat(path, options) {
   const key = dataPath(path, true);
   if (!key) return fs.stat(path, options);
+  if(d1Enabled()){const row=await d1Request('document.stat',{path:key});if(!row)throw filesystemError('ENOENT','stat',path);return fileStats(row.updated_at,row.bytes,false,options?.bigint);}
   const {rows} = await query('SELECT octet_length(body) AS bytes,updated_at FROM data_documents WHERE path=$1', [key]);
   if (!rows.length) throw filesystemError('ENOENT', 'stat', path);
   return fileStats(rows[0].updated_at, rows[0].bytes, false, options?.bigint);
@@ -164,7 +175,7 @@ export async function readdir(path, options) {
   const key = dataPath(path);
   if (!key) return fs.readdir(path, options);
   const prefix = key.replace(/\/$/, '') + '/';
-  const {rows} = await query('SELECT path FROM data_documents WHERE starts_with(path,$1) ORDER BY path', [prefix]);
+  const rows = d1Enabled()?await d1Request('document.list',{prefix}):(await query('SELECT path FROM data_documents WHERE starts_with(path,$1) ORDER BY path', [prefix])).rows;
   const entries = new Map();
   let diskExists = true;
   try {

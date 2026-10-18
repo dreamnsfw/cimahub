@@ -1,0 +1,14 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "cimahub-database",
+  "main": "database-worker.mjs",
+  "account_id": "32cb21f198d9a974ec6abd5b5e6233ad",
+  "compatibility_date": "2026-10-18",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "cimahub",
+      "database_id": "45085cef-745a-4448-a222-64403be0ca90"
+    }
+  ]
+}

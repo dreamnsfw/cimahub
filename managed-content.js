@@ -2,6 +2,7 @@ import {dbEnabled, query} from './database.js';
 import {safeLink} from './qfilm-import.js';
 import {movieIdentityTitle} from './movie-presentation.js';
 import {isDeepStrictEqual} from 'node:util';
+import {d1Enabled} from './d1-client.js';
 
 const defaults = Object.freeze({
   site_name: 'سيما هَب', site_description: '', contact_email: '', maintenance: false,
@@ -127,7 +128,12 @@ export async function resolveManaged(slug) {
 
 export async function managedWorks() {
   if (!dbEnabled()) return [];
-  const {rows} = await query('SELECT * FROM content_items ORDER BY key');
+  const {rows} = await query(d1Enabled()?`SELECT key,kind,provider_id,slug,name,year,status,overrides,
+    snapshot->>'indexable' AS stored_indexable,snapshot->>'poster_path' AS stored_poster,
+    snapshot->>'title' AS stored_title,snapshot->>'description' AS stored_description,
+    snapshot->>'overview' AS stored_overview,snapshot->>'adult' AS stored_adult
+    FROM content_items ORDER BY key`:'SELECT * FROM content_items ORDER BY key');
+  if(d1Enabled())for(const row of rows)row.snapshot={indexable:row.stored_indexable===null?undefined:Boolean(row.stored_indexable),poster_path:row.stored_poster,title:row.stored_title,description:row.stored_description,overview:row.stored_overview,adult:Boolean(row.stored_adult)};
   return rows.map(row => {
     const snapshot = row.snapshot || {}, overrides = row.overrides || {};
     const name = overrides[row.kind === 'movie' ? 'title' : 'name'] || row.name;

@@ -15,7 +15,7 @@ registerHooks({
     if (url === 'cimahub-public-assets:database') return {format:'module', shortCircuit:true, source:`
       const fail=async()=>{globalThis[Symbol.for('cimahub.public-assets.database')].calls++;throw new Error('database unavailable');};
       export const dbEnabled=()=>true;
-      export const initializeDatabase=fail,query=fail,transaction=fail,closeDatabase=async()=>{};
+      export const initializeDatabase=fail,query=fail,transaction=fail,batchQuery=fail,closeDatabase=async()=>{};
     `};
     return next(url, context);
   }

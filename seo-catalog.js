@@ -3,10 +3,13 @@ import {createHash} from 'node:crypto';
 import {englishWorkName} from './title-language.js';
 import {dbEnabled} from './database.js';
 import {rememberAndApply,resolveManaged,managedWorks} from './managed-content.js';
+import {d1Enabled} from './d1-client.js';
+import {createD1SeoCatalog} from './d1-seo-catalog.js';
 
 export const slugify=value=>String(value||'').normalize('NFKD').replace(/\p{M}/gu,'').toLowerCase().replace(/[^\p{L}\p{N}]+/gu,'-').replace(/^-|-$/g,'').slice(0,150).replace(/-$/,'');
 const reserved=new Set(['admin','movies','movie','series','anime','categories','top','recent','episodes','seasons','search','dmca','terms','api','uploads']);
 export function createSeoCatalog(directory=new URL('./data/',import.meta.url)){
+ if(d1Enabled())return createD1SeoCatalog();
  const file=new URL('seo-catalog.json',directory);let state,queue=Promise.resolve();
  async function load(){if(!state){try{state=JSON.parse(await readFile(file,'utf8'));}catch(error){if(error.code!=='ENOENT')throw error;state={works:{},images:{}};}state.pages||={};let changed=false;for(const record of Object.values(state.works)){if('aliases' in record){delete record.aliases;changed=true;}}if(changed)await persist();}return state;}
  const serial=work=>{const next=queue.catch(()=>{}).then(work);queue=next;return next;};
