@@ -7,10 +7,10 @@ import path from 'node:path';
 export const publicAssetPaths = Object.freeze([
   '/app.js', '/navigation.js', '/title-markup.js', '/home-carousel.js',
   '/media-links.js', '/media-images.js', '/filter-controls.js', '/pagination.js',
-  '/styles.css', '/favicon.svg', '/fonts/DroidKufi-Regular.ttf'
+  '/styles.css', '/favicon.svg', '/fonts/DroidKufi-Regular.ttf', '/fonts/DroidKufi-Regular.woff2', ...['barlow-1','barlow-2','barlow-3','plex-1','plex-2','plex-3','plex-4'].map(name=>'/fonts/'+name+'.woff2')
 ]);
 const allowed = new Set(publicAssetPaths);
-const mime = {'.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8', '.svg':'image/svg+xml', '.ttf':'font/ttf'};
+const mime = {'.js':'text/javascript; charset=utf-8', '.css':'text/css; charset=utf-8', '.svg':'image/svg+xml', '.ttf':'font/ttf', '.woff2':'font/woff2'};
 export const publicAssetHeaders = Object.freeze({
   // Stable filenames revalidate in browsers. Vercel caches static files per
   // deployment, so a new deployment immediately supplies the updated bytes.

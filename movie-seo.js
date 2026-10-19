@@ -1,5 +1,5 @@
 import {hdSuffix} from './seo-content.js';
-import {localImage as image,posterPlaceholder} from './public/media-images.js';
+import {localImage as image,posterPlaceholder,responsiveImages} from './public/media-images.js';
 import {pagination,MAX_LISTING_PAGES} from './public/pagination.js';
 import {safeLink} from './qfilm-import.js';
 import {createHash} from 'node:crypto';
@@ -284,11 +284,11 @@ export function renderSeoPage(template,metadata,content,items=[]) {
   const json=value=>JSON.stringify(value).replace(/</g,'\\u003c');
   const clientItems=items.map(m=>({id:m.id,media_type:m.media_type||'movie',name:m.name,series_display_title:m.series_display_title,title:m.title,display_title:m.display_title&&m.media_type!=='tv'?movieDisplayTitle(m):m.display_title,movie_presentation_version:m.movie_presentation_version,public_path:m.public_path,poster_path:m.poster_path,release_date:m.release_date,original_language:m.original_language,genre_ids:m.genre_ids||m.genres?.map(g=>g.id),vote_count:m.vote_count,vote_average:m.vote_average,videos:m.videos}));
   const head=`<link rel="canonical" href="${e(metadata.canonical)}"><meta name="robots" content="${metadata.noindex?'noindex, follow':'index, follow, max-image-preview:large'}"><meta property="og:title" content="${e(metadata.title)}"><meta property="og:description" content="${e(metadata.description)}"><meta property="og:url" content="${e(metadata.canonical)}"><meta property="og:type" content="website"><meta property="og:site_name" content="سيما هَب"><meta property="og:locale" content="ar_AR"><meta name="twitter:card" content="summary_large_image"><meta name="twitter:title" content="${e(metadata.title)}"><meta name="twitter:description" content="${e(metadata.description)}">${metadata.image?`<meta property="og:image" content="${e(metadata.image)}"><meta name="twitter:image" content="${e(metadata.image)}">`:''}<script type="application/ld+json">${json(metadata.schema)}</script>`;
-  return template.replace(/<title>[\s\S]*?<\/title>/,()=>`<title>${e(metadata.title)}</title>`)
+  return responsiveImages(template.replace(/<title>[\s\S]*?<\/title>/,()=>`<title>${e(metadata.title)}</title>`)
     .replace(/<meta name="description" content="[^"]*">/,()=>`<meta name="description" content="${e(metadata.description)}">`)
     .replace('</head>',()=>head+'</head>')
     .replace('<main id="main" tabindex="-1"></main>',()=>`<main id="main" tabindex="-1" data-server-rendered="true">${content}</main><script type="application/json" id="movie-page-data">${json(clientItems)}</script>`)
-    .replaceAll('href="#/','href="/#/');
+    .replaceAll('href="#/','href="/#/'));
 }
 
 // Persist only public publication metadata; secrets and user lists never enter this index.

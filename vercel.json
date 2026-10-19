@@ -12,8 +12,11 @@
   },
   "routes": [
     {
-      "src": "^/(app\\.js|navigation\\.js|title-markup\\.js|home-carousel\\.js|media-links\\.js|media-images\\.js|filter-controls\\.js|pagination\\.js|styles\\.css|favicon\\.svg|fonts/DroidKufi-Regular\\.ttf)$",
-      "methods": ["GET", "HEAD"],
+      "src": "^/(app\\.js|navigation\\.js|title-markup\\.js|home-carousel\\.js|media-links\\.js|media-images\\.js|filter-controls\\.js|pagination\\.js|styles\\.css|favicon\\.svg|fonts/(?:DroidKufi-Regular\\.(?:ttf|woff2)|(?:barlow-[1-3]|plex-[1-4])\\.woff2))$",
+      "methods": [
+        "GET",
+        "HEAD"
+      ],
       "dest": "/$1",
       "headers": {
         "Cache-Control": "public, max-age=0, must-revalidate",
@@ -24,6 +27,9 @@
         "Content-Security-Policy": "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' https://image.tmdb.org data:; connect-src 'self'; frame-src https://www.youtube-nocookie.com https://megamax.me; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
       }
     },
-    {"src": "/(.*)", "dest": "/api/index.mjs"}
+    {
+      "src": "/(.*)",
+      "dest": "/api/index.mjs"
+    }
   ]
 }

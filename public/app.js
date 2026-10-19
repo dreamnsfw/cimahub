@@ -1,6 +1,7 @@
 import {workTitleMarkup} from './title-markup.js';
 import {mediaLink,seriesLink} from './media-links.js';
-import {localImage as image,posterPlaceholder} from './media-images.js';
+import {localImage,posterPlaceholder} from './media-images.js';
+const image=(path,size)=>localImage(path,size).replace('/uploads/thumbs/','/uploads/optimized/');
 import {enhanceFilters} from './filter-controls.js';
 import {pagination,MAX_LISTING_PAGES} from './pagination.js';
 import {homeCarousel,homeIntroduction,enhanceHomeCarousel} from './home-carousel.js';

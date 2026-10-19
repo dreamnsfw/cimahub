@@ -1,5 +1,6 @@
 import {MAX_LISTING_PAGES} from './public/pagination.js';
 import {createSharedCache,publicPageCacheKey} from './shared-cache.js';
+import {createOptimizedImageCache} from './optimized-image.js';
 import {withSiteNavigation} from './site-navigation.js';
 import {categoriesPage,categoriesPath} from './directory-page.js';
 import {createAdultCategory} from './qfilm-category.js';
@@ -61,6 +62,7 @@ const presentSeries=async (...args)=>{
 };
 const applyMoviePresentation=formatMovies;
 const cachedImage=createImageCache({sourceFor:createImageSourceResolver({catalog:seoCatalog,load:tmdb})});
+const optimizedImage=createOptimizedImageCache({load:cachedImage});
 const pendingRequests = new Map();
 const clients = new Map();
 const movieIndex = createMovieIndex();
@@ -325,8 +327,8 @@ export async function handleRequest(req, res) {
       res.writeHead(200,{'Content-Type':image.type,'Content-Length':image.body.length,'Cache-Control':'public, max-age=31536000, immutable'});
       return res.end(req.method==='HEAD'?undefined:image.body);
     }
-    if(url.pathname.startsWith('/uploads/thumbs/')){
-      const image=await cachedImage(url.pathname);
+    if(url.pathname.startsWith('/uploads/thumbs/')||url.pathname.startsWith('/uploads/optimized/')){
+      const image=await (url.pathname.startsWith('/uploads/optimized/')?optimizedImage:cachedImage)(url.pathname);
       if(!image)return json(404,{error:'الصورة غير موجودة'});
       res.writeHead(200,{'Content-Type':image.type,'Content-Length':image.body.length,'Cache-Control':'public, max-age=31536000, immutable'});
       return res.end(req.method==='HEAD'?undefined:image.body);
