@@ -6,6 +6,8 @@ import {createHash} from 'node:crypto';
 import {readFile, mkdir, writeFile, rename} from './storage.js';
 import {usesMoviePresentation,movieIdentityTitle} from './movie-presentation.js';
 import {workTitleMarkup} from './public/title-markup.js';
+import {d1Enabled} from './d1-client.js';
+import {query,batchQuery} from './database.js';
 
 export const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const e = escapeHtml;
@@ -291,6 +293,16 @@ export function renderSeoPage(template,metadata,content,items=[]) {
 
 // Persist only public publication metadata; secrets and user lists never enter this index.
 export function createMovieIndex(directory = new URL('./data/',import.meta.url)) {
+ if(d1Enabled())return {
+  async all(){const {rows}=await query('SELECT * FROM movie_index ORDER BY id');return Object.fromEntries(rows.map(({id,...value})=>[id,value]));},
+  async remember(movies){
+   const candidates=movies.filter(m=>usesMoviePresentation(m,'movie')&&m.id&&m.overview).map(m=>({id:m.id,path:m.public_path||moviePath(m.id),hash:createHash('sha256').update(JSON.stringify([m.title,m.overview,m.poster_path,m.release_date])).digest('hex')}));
+   if(!candidates.length)return;
+   const old=new Map((await query('SELECT * FROM movie_index WHERE id=ANY($1::text[])',[candidates.map(m=>m.id)])).rows.map(row=>[Number(row.id),row]));
+   const statements=candidates.filter(m=>old.get(m.id)?.hash!==m.hash||old.get(m.id)?.path!==m.path).map(m=>({sql:'INSERT INTO movie_index(id,path,hash,lastmod) VALUES($1,$2,$3,$4) ON CONFLICT(id) DO UPDATE SET path=excluded.path,hash=excluded.hash,lastmod=excluded.lastmod WHERE movie_index.hash<>excluded.hash OR movie_index.path<>excluded.path',params:[m.id,m.path,m.hash,new Date().toISOString()]}));
+   for(let i=0;i<statements.length;i+=30)await batchQuery(statements.slice(i,i+30));
+  }
+ };
   const file=new URL('movie-index.json',directory);
   let queue=Promise.resolve();
   async function read(){try{return JSON.parse(await readFile(file,'utf8'));}catch(error){if(error.code==='ENOENT')return {};throw error;}}

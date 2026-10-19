@@ -88,3 +88,6 @@ CREATE TABLE IF NOT EXISTS data_document_chunks (
  ordinal INTEGER NOT NULL CHECK(ordinal>=0), body TEXT NOT NULL,
  PRIMARY KEY(path,ordinal)
 );
+CREATE TABLE IF NOT EXISTS movie_index (
+ id INTEGER PRIMARY KEY, path TEXT NOT NULL, hash TEXT NOT NULL, lastmod TEXT NOT NULL
+);

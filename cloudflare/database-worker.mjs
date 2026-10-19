@@ -2,7 +2,6 @@ const now=()=>new Date().toISOString();
 const reply=(value,status=200)=>Response.json(value,{status,headers:{'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
 const statement=(db,sql,params=[])=>db.prepare(sql).bind(...params);
 const rows=async(db,sql,params=[])=> (await statement(db,sql,params).all()).results;
-function chunks(value){const result=[];let part='',bytes=0;for(const c of value){const n=new TextEncoder().encode(c).length;if(bytes+n>30000){result.push(part);part='';bytes=0;}part+=c;bytes+=n;}result.push(part);return result;}
 export default {
  async fetch(request,env){
   if(request.method!=='POST')return reply({error:'Method not allowed'},405);
@@ -61,3 +60,4 @@ export default {
   }catch(error){console.error('D1 operation failed',String(error.message).slice(0,120).replace(/https?:\/\/\S+/g,'[URL]'));return reply({error:'Database operation failed'},500);}
  }
 };
+import {documentChunks as chunks} from './document-chunks.mjs';

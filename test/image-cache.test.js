@@ -33,6 +33,15 @@ test('invalid downloaded content is not saved as an image',async()=>{
   await assert.rejects(readFile(join(folder,'w500/bad.jpg')),{code:'ENOENT'});
  }finally{assert.ok(folder.startsWith(join(tmpdir(),'cimahub-images-')));await rm(folder,{recursive:true,force:true});}
 });
+
+test('a transient invalid upstream response is retried without caching its contents',async()=>{
+ const folder=await mkdtemp(join(tmpdir(),'cimahub-images-')),bytes=Buffer.from([255,216,255,224,0,0]);let calls=0;
+ try{
+  const cache=createImageCache({directory:pathToFileURL(folder+'/'),fetchImage:async()=>++calls===1?new Response('Temporary error',{status:503}):new Response(bytes,{headers:{'content-type':'image/jpeg'}})});
+  assert.deepEqual((await cache('/uploads/thumbs/w500/retry.jpg')).body,bytes);assert.equal(calls,2);
+  assert.deepEqual(await readFile(join(folder,'w500/retry.jpg')),bytes);
+ }finally{assert.ok(folder.startsWith(join(tmpdir(),'cimahub-images-')));await rm(folder,{recursive:true,force:true});}
+});
 test('read-only bundled images remain available when the writable cache is empty',async()=>{
  const folder=await mkdtemp(join(tmpdir(),'cimahub-images-')),bytes=Buffer.from([255,216,255,224,0,0]);
  try{

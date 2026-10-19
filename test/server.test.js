@@ -51,7 +51,7 @@ test('the unified category directory renders and appears in sitemaps without cal
    assert.equal((html.match(/class="directory-child/g)||[]).length,127);
    assert.match(html,/id="movie-page-data">\[\]<\/script>/);
   }
-  for(const path of ['/sitemap-categories.xml','/sitemap-base.xml'])assert.match(await (await originalFetch(base+path)).text(),/<loc>[^<]+\/categories\/<\/loc>/);
+  assert.match(await (await originalFetch(base+'/sitemap-base.xml')).text(),/<loc>[^<]+\/categories\/<\/loc>/);
   const head=await originalFetch(base+'/categories/',{method:'HEAD'});assert.equal(head.status,200);assert.equal(await head.text(),'');
  }finally{globalThis.fetch=originalFetch;}
 });
@@ -151,7 +151,11 @@ test('native anime and TV categories return server-rendered SEO and sitemap entr
   assert.match(futureMain,/href="\/movies\/foreign\/">أفلام أجنبية/);
   const sitemap=await originalFetch(base+'/sitemap-categories.xml');
   const xml=await sitemap.text();assert.match(xml,/\/anime\/movies\//);assert.match(xml,/\/anime\/series\//);assert.match(xml,/\/series-category\/arabic-series\//);
-  const baseMap=await originalFetch(base+'/sitemap-base.xml');assert.equal(baseMap.status,200);assert.equal(await baseMap.text(),xml);
+  const baseMap=await originalFetch(base+'/sitemap-base.xml');assert.equal(baseMap.status,200);const baseXml=await baseMap.text();
+  const baseUrls=new Set([...baseXml.matchAll(/<loc>(.*?)<\/loc>/g)].map(m=>m[1]));
+  const categoryUrls=[...xml.matchAll(/<loc>(.*?)<\/loc>/g)].map(m=>m[1]);
+  assert.ok([...baseUrls].some(url=>new URL(url).pathname==='/categories/'));assert.ok(categoryUrls.some(url=>new URL(url).pathname==='/movies/'));
+  assert.ok(categoryUrls.every(url=>!baseUrls.has(url)),'base pages and category pages must not be duplicated across maps');
   assert.equal((xml.match(/<loc>[^<]*\/movies\/18-plus\/<\/loc>/g)||[]).length,1);
   assert.match(xml,/\/movies\/genre\/biography\//);assert.match(xml,/\/movies\/coming-soon\//);
   const sitemapIndex=await(await originalFetch(base+'/sitemap.xml')).text();assert.match(sitemapIndex,/\/sitemap-base\.xml/);assert.match(sitemapIndex,/\/sitemap-categories\.xml/);

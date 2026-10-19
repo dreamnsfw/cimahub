@@ -329,7 +329,9 @@ export async function handleRequest(req, res) {
     }
     if(url.pathname==='/sitemap-videos.xml')return send(200,videoSitemapXml(siteOrigin,await publishedVideoEntries(await seoCatalog.all(),await seoCatalog.pages())),'application/xml; charset=utf-8');
     if(['/sitemap-categories.xml','/sitemap-base.xml'].includes(url.pathname)){
-      return send(200,sitemapXml(siteOrigin,await sitemapCategoryEntries()),'application/xml; charset=utf-8');
+      const core=new Set(['/',categoriesPath,'/top/','/recent/','/episodes/','/seasons/','/dmca/','/terms/']);
+      const entries=(await sitemapCategoryEntries()).filter(row=>url.pathname==='/sitemap-base.xml'?core.has(row.path):!core.has(row.path));
+      return send(200,sitemapXml(siteOrigin,entries),'application/xml; charset=utf-8');
     }
     const sitemapMatch=url.pathname.match(/^\/sitemap-movies-([1-9]\d*)\.xml$/);
     if(sitemapMatch){const entries=await sitemapEntries();const part=Number(sitemapMatch[1]);if(part>Math.max(1,Math.ceil(entries.length/1000)))return json(404,{error:'الخريطة غير موجودة'});return send(200,sitemapXml(siteOrigin,entries.slice((part-1)*1000,part*1000)),'application/xml; charset=utf-8');}

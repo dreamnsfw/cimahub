@@ -27,6 +27,7 @@ export function createImageCache(options={}){
       try{
         const source=await sourceFor(name);
         if(!/^\/[a-zA-Z0-9_-]+\.(jpg|png|webp)$/.test(source||''))throw Object.assign(new Error('الصورة غير موجودة'),{status:404});
+        for(let attempt=0;attempt<2;attempt++)try{
         const response=await fetchImage(`https://image.tmdb.org/t/p/${size}${source}`,{signal:AbortSignal.timeout(20000),redirect:'error'});
         if(!response.ok)throw Object.assign(new Error('الصورة غير متاحة'),{status:response.status===404?404:502});
         if(response.headers.get('content-type')?.split(';')[0]!==mime[extension]||Number(response.headers.get('content-length'))>limit)throw new Error('Invalid image response');
@@ -36,6 +37,7 @@ export function createImageCache(options={}){
         if(!validImage(body,extension))throw new Error('Invalid image data');
         await writeCachedMedia(`${size}/${name}`,body,directory);
         return {body,type:mime[extension]};
+        }catch(error){if(error.status===404||attempt===1)throw error;}
       }finally{release();}
     })().finally(()=>pending.delete(pathname));
     pending.set(pathname,work);return work;

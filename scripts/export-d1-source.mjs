@@ -63,7 +63,9 @@ try {
     const {rows} = await client.query('FETCH FORWARD 1 FROM migration_cursor');
     if (!rows.length) break;
     const row = rows[0];
-    if (row.path === 'data/seo-catalog.json') {
+    if (row.path === 'data/movie-index.json') {
+      for(const [id,value] of Object.entries(JSON.parse(row.body)))await insert('movie_index',{id:Number(id),...value});
+    } else if (row.path === 'data/seo-catalog.json') {
       const catalog = JSON.parse(row.body);
       for (const namespace of ['works','images','pages','collections']) {
         for (const [key,value] of Object.entries(catalog[namespace] || {})) {
