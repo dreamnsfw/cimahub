@@ -1,0 +1,9 @@
+{
+ "$schema":"../node_modules/wrangler/config-schema.json",
+ "name":"cimahub-www-redirect",
+ "main":"www-redirect.mjs",
+ "account_id":"32cb21f198d9a974ec6abd5b5e6233ad",
+ "compatibility_date":"2026-10-18",
+ "workers_dev":false,
+ "routes":[{"pattern":"www.cimahub.net/*","zone_name":"cimahub.net"}]
+}
