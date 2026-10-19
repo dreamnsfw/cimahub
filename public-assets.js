@@ -5,7 +5,7 @@ import path from 'node:path';
 
 // An explicit list keeps templates, admin files and uploads behind their handlers.
 export const publicAssetPaths = Object.freeze([
-  '/app.js', '/navigation.js', '/title-markup.js', '/home-carousel.js',
+  '/app.js', '/analytics.js', '/navigation.js', '/title-markup.js', '/home-carousel.js',
   '/media-links.js', '/media-images.js', '/filter-controls.js', '/pagination.js',
   '/styles.css', '/favicon.svg', '/fonts/DroidKufi-Regular.ttf', '/fonts/DroidKufi-Regular.woff2', ...['barlow-1','barlow-2','barlow-3','plex-1','plex-2','plex-3','plex-4'].map(name=>'/fonts/'+name+'.woff2')
 ]);
@@ -19,7 +19,7 @@ export const publicAssetHeaders = Object.freeze({
   'X-Content-Type-Options':'nosniff',
   'Referrer-Policy':'strict-origin-when-cross-origin',
   'X-Frame-Options':'DENY',
-  'Content-Security-Policy':"default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' https://image.tmdb.org data:; connect-src 'self'; frame-src https://www.youtube-nocookie.com https://megamax.me; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
+  'Content-Security-Policy':"default-src 'self'; script-src 'self' https://www.googletagmanager.com; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' https://image.tmdb.org https://*.google-analytics.com https://www.googletagmanager.com data:; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com; frame-src https://www.youtube-nocookie.com https://megamax.me; object-src 'none'; base-uri 'self'; frame-ancestors 'none'"
 });
 
 export function createPublicAssetHandler(directory = new URL('./public/', import.meta.url)) {

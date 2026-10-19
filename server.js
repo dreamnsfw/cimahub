@@ -228,7 +228,7 @@ export async function handleRequest(req, res) {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('X-Frame-Options', 'DENY');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' https://image.tmdb.org data:; connect-src 'self'; frame-src https://www.youtube-nocookie.com https://megamax.me; object-src 'none'; base-uri 'self'; frame-ancestors 'none'");
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' https://www.googletagmanager.com; style-src 'self' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' https://image.tmdb.org https://*.google-analytics.com https://www.googletagmanager.com data:; connect-src 'self' https://*.google-analytics.com https://*.analytics.google.com https://www.googletagmanager.com; frame-src https://www.youtube-nocookie.com https://megamax.me; object-src 'none'; base-uri 'self'; frame-ancestors 'none'");
   const json = (status, data) => {
     if(status>=400&&!req.url.startsWith('/api/')&&!req.url.startsWith('/uploads/')){
       res.writeHead(status,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-store','X-Robots-Tag':'noindex',...(status>=500?{'Retry-After':'60'}:{})});

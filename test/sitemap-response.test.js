@@ -46,7 +46,7 @@ test('HTML pages and missing sitemap errors keep the strict site policy',async()
     const res=await response(path);
     assert.equal(res.status,status,path);
     assert.match(res.headers['content-type'],/^text\/html/);
-    assert.match(res.headers['content-security-policy'],/script-src 'self'; style-src 'self' https:\/\/fonts\.googleapis\.com;/);
+    assert.match(res.headers['content-security-policy'],/script-src 'self' https:\/\/www\.googletagmanager\.com; style-src 'self' https:\/\/fonts\.googleapis\.com;/);
     assert.doesNotMatch(res.headers['content-security-policy'],/'unsafe-inline'/);
   }
 });
