@@ -30,19 +30,23 @@ export default {
    if(input.operation==='document.write'){
     const previous=(await rows(db,'SELECT revision FROM data_documents WHERE path=?',[input.path]))[0];
     if(input.exclusive&&previous)return reply({error:'EEXIST'},409);
-    let body=input.body;
-    if(input.append&&previous){const old=await rows(db,'SELECT body FROM data_document_chunks WHERE path=? ORDER BY ordinal',[input.path]);body=old.map(r=>r.body).join('')+body;}
+    const old=previous?await rows(db,'SELECT body FROM data_document_chunks WHERE path=? ORDER BY ordinal',[input.path]):[];
+    let body=input.append?old.map(r=>r.body).join('')+input.body:input.body;
+    if(previous&&old.map(r=>r.body).join('')===body)return reply({ok:true,unchanged:true});
     const parts=chunks(body);if(parts.length>35)return reply({error:'Document requires normalization'},413);
     // One atomic batch replaces both the metadata and every chunk.
     await db.batch([
      statement(db,`INSERT INTO data_documents(path,bytes,revision,updated_at) VALUES(?,?,?,?) ON CONFLICT(path) DO UPDATE SET bytes=excluded.bytes,revision=excluded.revision,updated_at=excluded.updated_at`,[input.path,new TextEncoder().encode(body).length,crypto.randomUUID(),now()]),
-     statement(db,'DELETE FROM data_document_chunks WHERE path=?',[input.path]),
-     ...parts.map((part,i)=>statement(db,'INSERT INTO data_document_chunks(path,ordinal,body) VALUES(?,?,?)',[input.path,i,part]))
+     ...(old.length>parts.length?[statement(db,'DELETE FROM data_document_chunks WHERE path=? AND ordinal>=?',[input.path,parts.length])]:[]),
+     ...parts.flatMap((part,i)=>old[i]?.body===part?[]:[statement(db,'INSERT INTO data_document_chunks(path,ordinal,body) VALUES(?,?,?) ON CONFLICT(path,ordinal) DO UPDATE SET body=excluded.body',[input.path,i,part])])
     ]);return reply({ok:true});
    }
    if(input.operation==='document.rename'){
     if(input.from===input.to)return reply({ok:true});
     if(!(await rows(db,'SELECT 1 FROM data_documents WHERE path=?',[input.from])).length)return reply({error:'ENOENT'},404);
+    const source=await rows(db,'SELECT body FROM data_document_chunks WHERE path=? ORDER BY ordinal',[input.from]);
+    const target=await rows(db,'SELECT body FROM data_document_chunks WHERE path=? ORDER BY ordinal',[input.to]);
+    if(target.length&&source.map(r=>r.body).join('')===target.map(r=>r.body).join('')){await statement(db,'DELETE FROM data_documents WHERE path=?',[input.from]).run();return reply({ok:true,unchanged:true});}
     await db.batch([
      statement(db,'DELETE FROM data_documents WHERE path=?',[input.to]),
      statement(db,'INSERT INTO data_documents(path,bytes,revision,updated_at) SELECT ?,bytes,revision,updated_at FROM data_documents WHERE path=?',[input.to,input.from]),

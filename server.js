@@ -1,4 +1,5 @@
 import {MAX_LISTING_PAGES} from './public/pagination.js';
+import {withD1ReadOnly} from './d1-client.js';
 import {createSharedCache,publicPageCacheKey} from './shared-cache.js';
 import {createOptimizedImageCache} from './optimized-image.js';
 import {withSiteNavigation} from './site-navigation.js';
@@ -240,6 +241,7 @@ export async function handleRequest(req, res) {
   catch { return json(400,{error:'عنوان الصفحة غير صالح'}); }
   try{await initializeAdministration();}catch{return json(503,{error:'تعذر الاتصال بقاعدة بيانات الموقع'});}
   if(req.url.startsWith('/admin')||req.url.startsWith('/api/admin/')){try{if(await adminApi.handle(req,res,new URL(req.url,'http://localhost')))return;}catch{return json(503,{error:'تعذر الاتصال بقاعدة بيانات الإدارة'});}}
+  return withD1ReadOnly(async()=>{
   if (!['GET', 'HEAD'].includes(req.method)) return json(405, {error: 'الطلب غير مدعوم'});
   try {
     const url = new URL(req.url, 'http://localhost');
@@ -566,6 +568,7 @@ export async function handleRequest(req, res) {
     if(!(error instanceof URIError)&&(!error.status||error.status>=500))console.error('Public request failed',JSON.stringify({path:req.url.split('?')[0],name:error.name,code:error.code,stack:error.stack?.split('\n').slice(1,5).map(line=>line.replace(/https?:\/\/\S+/g,'[remote URL]'))}));
     json(error instanceof URIError?400:error.status || 502, {error: error instanceof URIError?'عنوان الصفحة غير صالح':error.status ? error.message : 'تعذّر الاتصال بخدمة الأفلام. حاول مجددًا.'});
   }
+  });
 }
 export const server = http.createServer(handleRequest);
 server.on('listening',()=>{if(serverless)return;if(dbEnabled())void initializeAdministration().catch(e=>console.warn('Administration startup:',e.code||'unavailable'));else if(process.env.TMDB_API_KEY){void linkSync.start().catch(e=>console.warn('Link sync:',e.message));sourceDiscovery.start();}});

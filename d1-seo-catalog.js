@@ -47,7 +47,7 @@ export function createD1SeoCatalog(){
      const prior=await get('images',source.slice(1));if(prior)source=prior.source;
      if(!/^\/[a-zA-Z0-9_-]+\.(jpg|png|webp)$/.test(source))return null;
      const extension=source.split('.').pop(),base=`${record.slug}-${role}`;let file=base+'.'+extension,n=2;
-     while(true){const previous=await get('images',file);if(!previous){if(persist)await set('images',file,{source});break;}if(previous.source===source)break;file=`${base}-${n++}.${extension}`;}
+     while(true){const previous=await get('images',file);if(!previous){if(!persist)return source;await set('images',file,{source});break;}if(previous.source===source)break;file=`${base}-${n++}.${extension}`;}
      return '/'+file;
     }
     const result={...item,media_type:type,public_path:`/${record.slug}/`,poster_path:await image(item.poster_path,'poster'),backdrop_path:await image(item.backdrop_path,'backdrop')};
@@ -58,7 +58,7 @@ export function createD1SeoCatalog(){
     if(item.recommendations)result.recommendations=await visit(item.recommendations,type);
     return result;
    }
-   return persist?rememberAndApply(await visit(data,fallbackType),fallbackType):await visit(data,fallbackType);
+   return rememberAndApply(await visit(data,fallbackType),fallbackType,{persist});
   });}
  };
 }

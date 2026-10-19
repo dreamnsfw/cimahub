@@ -57,7 +57,7 @@ function applyOverrides(item, row) {
   return result;
 }
 
-export async function rememberAndApply(data, fallbackType, {detail = false} = {}) {
+export async function rememberAndApply(data, fallbackType, {detail = false, persist = true} = {}) {
   if (!dbEnabled()) return data;
   const incoming = new Map();
   function collect(value, fallback) {
@@ -88,7 +88,7 @@ export async function rememberAndApply(data, fallbackType, {detail = false} = {}
       || (!manualName && row.name !== candidate.name)
       || (candidate.year && row.year !== candidate.year) || (!row.slug && candidate.slug)) changes.push(candidate);
   }
-  if (changes.length) {
+  if (persist && changes.length) {
     const {rows} = await limitedQuery(`
       INSERT INTO content_items(key,kind,provider_id,slug,name,year,snapshot)
       SELECT key,kind,provider_id,slug,name,year,snapshot
@@ -109,6 +109,7 @@ export async function rememberAndApply(data, fallbackType, {detail = false} = {}
     const key = workKey(value, fallback);
     if (!key || (!value.title && !value.name)) return value;
     const kind = key.split(':')[0], row = rowsByKey.get(key);
+    if (!row) return value;
     if (row.status !== 'published') {
       if (isDetail) throw Object.assign(new Error('العمل غير موجود'), {status: 404});
       return null;
