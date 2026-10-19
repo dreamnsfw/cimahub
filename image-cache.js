@@ -20,7 +20,7 @@ export function createImageCache(options={}){
     const [,size,name,extension]=match;
     if(!localImage('/'+name,size))return null;
     const saved=await readCachedMedia(`${size}/${name}`,directory,bundledDirectory);
-    if(saved)return {body:saved,type:mime[extension]};
+    if(saved){const format=Object.keys(mime).find(ext=>validImage(saved,ext));if(format)return {body:saved,type:mime[format]};}
     if(pending.has(pathname))return pending.get(pathname);
     const work=(async()=>{
       await acquire();
@@ -30,13 +30,15 @@ export function createImageCache(options={}){
         for(let attempt=0;attempt<2;attempt++)try{
         const response=await fetchImage(`https://image.tmdb.org/t/p/${size}${source}`,{signal:AbortSignal.timeout(20000),redirect:'error'});
         if(!response.ok)throw Object.assign(new Error('الصورة غير متاحة'),{status:response.status===404?404:502});
-        if(response.headers.get('content-type')?.split(';')[0]!==mime[extension]||Number(response.headers.get('content-length'))>limit)throw new Error('Invalid image response');
+        const contentType=response.headers.get('content-type')?.split(';')[0].trim().toLowerCase();
+        const actual=Object.keys(mime).find(ext=>mime[ext]===contentType||(ext==='jpg'&&contentType==='image/jpg'));
+        if(!actual||Number(response.headers.get('content-length'))>limit)throw Object.assign(new Error('Invalid image response'),{code:'IMAGE_RESPONSE_'+String(contentType).replace(/[^a-z]/g,'_')});
         const chunks=[];let length=0;
         for await(const chunk of response.body){length+=chunk.length;if(length>limit)throw new Error('Image too large');chunks.push(chunk);}
         const body=Buffer.concat(chunks);
-        if(!validImage(body,extension))throw new Error('Invalid image data');
+        if(!validImage(body,actual))throw new Error('Invalid image data');
         await writeCachedMedia(`${size}/${name}`,body,directory);
-        return {body,type:mime[extension]};
+        return {body,type:mime[actual]};
         }catch(error){if(error.status===404||attempt===1)throw error;}
       }finally{release();}
     })().finally(()=>pending.delete(pathname));

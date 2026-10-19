@@ -42,6 +42,15 @@ test('a transient invalid upstream response is retried without caching its conte
   assert.deepEqual(await readFile(join(folder,'w500/retry.jpg')),bytes);
  }finally{assert.ok(folder.startsWith(join(tmpdir(),'cimahub-images-')));await rm(folder,{recursive:true,force:true});}
 });
+
+test('a valid raster format returned for an opaque jpg URL retains its actual MIME type after caching',async()=>{
+ const folder=await mkdtemp(join(tmpdir(),'cimahub-images-')),bytes=Buffer.from([137,80,78,71,13,10,26,10,0]);
+ try{
+  const directory=pathToFileURL(folder+'/');const cache=createImageCache({directory,fetchImage:async()=>new Response(bytes,{headers:{'content-type':'image/png'}})});
+  assert.equal((await cache('/uploads/thumbs/w500/opaque.jpg')).type,'image/png');
+  const fresh=createImageCache({directory,fetchImage:()=>{throw new Error('Must use disk');}});assert.equal((await fresh('/uploads/thumbs/w500/opaque.jpg')).type,'image/png');
+ }finally{assert.ok(folder.startsWith(join(tmpdir(),'cimahub-images-')));await rm(folder,{recursive:true,force:true});}
+});
 test('read-only bundled images remain available when the writable cache is empty',async()=>{
  const folder=await mkdtemp(join(tmpdir(),'cimahub-images-')),bytes=Buffer.from([255,216,255,224,0,0]);
  try{
