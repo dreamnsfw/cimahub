@@ -1,6 +1,7 @@
 import {createHash} from 'node:crypto';
 import {d1Request,prefetchCatalog} from './d1-client.js';
 import {englishWorkName} from './title-language.js';
+import {publicWorkSlug} from './public-work-path.js';
 import {rememberAndApply,resolveManaged,managedWorks} from './managed-content.js';
 const slugify=value=>String(value).normalize('NFKD').replace(/\p{M}/gu,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,150).replace(/-$/,'');
 const get=(namespace,key)=>d1Request('catalog.get',{namespace,key});
@@ -36,9 +37,8 @@ export function createD1SeoCatalog(){
     if(!item.id||item.media_type==='person'||(!item.title&&!item.name))return item;
     const type=item.media_type||fallback||(item.title?'movie':'tv');if(!['movie','tv'].includes(type))return item;
     const key=`${type}:${item.id}`,existing=await get('works',key),name=englishWorkName(item)||`${type}-${item.id}`,year=(item.release_date||item.first_air_date||'').slice(0,4);
-    if(!persist&&!existing)return item;
     let record=existing;
-    if(!record){let slug=slugify([name,year].filter(Boolean).join(' '))||`${type}-${item.id}`;if(['admin','movies','series','anime','search','top','recent','categories','api','uploads','seasons','episodes','dmca','terms'].includes(slug))slug+='-'+type;
+    if(!record){let slug=publicWorkSlug(item)||slugify([name,year].filter(Boolean).join(' '))||`${type}-${item.id}`;if(['admin','movies','series','anime','search','top','recent','categories','api','uploads','seasons','episodes','dmca','terms'].includes(slug))slug+='-'+type;
      const owner=await resolveManaged(slug);if(owner&&(owner.id!==item.id||owner.type!==type))slug+='-'+type+'-'+item.id;
      record={id:item.id,type,slug,name,year,indexable:!!item.overview&&!item.adult};}
     async function image(source,role){
