@@ -1,4 +1,5 @@
 import {MAX_LISTING_PAGES} from './public/pagination.js';
+import {createSharedCache,publicPageCacheKey} from './shared-cache.js';
 import {withSiteNavigation} from './site-navigation.js';
 import {categoriesPage,categoriesPath} from './directory-page.js';
 import {createAdultCategory} from './qfilm-category.js';
@@ -39,6 +40,7 @@ const serverless = Boolean(process.env.VERCEL);
 const siteTemplate=async()=>{const settings=await currentSettings();let html=withSiteNavigation(await readFile(path.join(root,'index.html'),'utf8'));if(settings.site_name!=='سيما هَب')html=html.replace(/سيما هَب/g,escapeHtml(settings.site_name));if(settings.site_name!=='سيما هَب')html=html.replace(/(<a class="brand"[^>]*>)[\s\S]*?(<\/a>)/,(_,start,end)=>start+'<span class="brand-icon">▶</span><span>'+escapeHtml(settings.site_name)+'</span>'+end);if(settings.header_notice)html=html.replace('</header>','</header><div class="content" role="status">'+escapeHtml(settings.header_notice)+'</div>');if(settings.contact_email)html=html.replace('</footer>','<a href="mailto:'+escapeHtml(settings.contact_email)+'">تواصل معنا</a></footer>');return html;};
 const cache = new Map();
 const pageCache=new Map();
+const sharedCache=createSharedCache();
 function listingRequestPath(url,canonicalPath){
  const [pathname,query='']=canonicalPath.split('?');
  const params=new URLSearchParams(query);
@@ -143,6 +145,9 @@ async function tmdb(endpoint, params) {
   if (cache.get(key)?.expires > Date.now()) return cache.get(key).data;
   if (pendingRequests.has(key)) return pendingRequests.get(key);
   const request=(async()=>{
+    const sharedKey='tmdb:'+key;
+    const shared=await sharedCache.get(sharedKey);
+    if(shared){if(cache.size>=1500)cache.delete(cache.keys().next().value);cache.set(key,{data:shared,expires:Date.now()+300000});return shared;}
     const apiKey=process.env.TMDB_API_KEY;
     if(!apiKey)throw Object.assign(new Error('يرجى ضبط مفتاح TMDB في إعدادات الخادم'),{status:503});
     const query=new URLSearchParams(params);query.set('api_key',apiKey);
@@ -152,7 +157,7 @@ async function tmdb(endpoint, params) {
         if(!response.ok){if((response.status>=500||response.status===429)&&attempt===0)continue;throw Object.assign(new Error(response.status===404?'العمل غير موجود':'تعذّر تحميل بيانات العمل. حاول مجددًا بعد قليل.'),{status:response.status===404?404:502});}
         const data=await response.json();
         if(cache.size>=1500)cache.delete(cache.keys().next().value);
-        cache.set(key,{data,expires:Date.now()+300000});return data;
+        cache.set(key,{data,expires:Date.now()+300000});await sharedCache.set(sharedKey,data);return data;
       }catch(error){if(error.status||attempt===1)throw Object.assign(new Error(error.status?error.message:'تعذّر الاتصال بمصدر البيانات. حاول مجددًا بعد قليل.'),{status:error.status||502});}
     }
   })().finally(()=>pendingRequests.delete(key));
@@ -187,13 +192,15 @@ async function recentData(requestedPage){
         const movies=batches.flatMap(d=>d.results).map(m=>({...m,media_type:'movie',recent_date:m.release_date}));
         const merged=[...movies,...episodes.map(m=>({...m,media_type:'tv',recent_date:m.air_date}))].sort((a,b)=>b.recent_date.localeCompare(a.recent_date)||a.id-b.id);
         const skip=offset-(start-1)*20;
-        const results=await Promise.all(merged.slice(skip,skip+pageSize).map(async m=>m.media_type==='movie'?seoCatalog.decorate(await applyMoviePresentation(m,'movie/'+m.id,tmdb)):presentSeries(m,'tv/'+m.id,tmdb)));
-        return {page,total_pages:totalPages,total_results:total,page_size:pageSize,results};
+        const results=await Promise.all(merged.slice(skip,skip+pageSize).map(m=>m.media_type==='movie'?applyMoviePresentation(m,'movie/'+m.id,tmdb):formatSeries(m,'tv/'+m.id,tmdb,translateSeries)));
+        // Resolve catalog records and persist the displayed batch once, not once per card.
+        return seoCatalog.decorate({page,total_pages:totalPages,total_results:total,page_size:pageSize,results});
 }
 
 let scheduledSync,syncSignature;
-async function applyAdministration(){
+async function applyAdministration(invalidate=false){
  if(!dbEnabled())return;
+ if(invalidate)await sharedCache.invalidatePages();
  pageCache.clear();configureNavigationTaxonomy((await query('SELECT * FROM taxonomy')).rows);
  const settings=await currentSettings();const signature=JSON.stringify([settings.sync_enabled,settings.sync_interval_hours]);if(signature===syncSignature)return;syncSignature=signature;linkSync.stop();sourceDiscovery.stop();clearInterval(scheduledSync);
  if(serverless)return;
@@ -208,7 +215,7 @@ async function initializeAdministration(){
  })().catch(error=>{administrationReady=undefined;throw error;});
  return administrationReady;
 }
-const adminApi=createAdminApi({origin:siteOrigin,onChange:applyAdministration,loadTMDB:tmdb,loadWork:async(type,id)=>{
+const adminApi=createAdminApi({origin:siteOrigin,onChange:()=>applyAdministration(true),loadTMDB:tmdb,loadWork:async(type,id)=>{
  const endpoint=type+'/'+id;const raw=await tmdb(endpoint,new URLSearchParams({language:'ar-SA',append_to_response:'credits,videos,recommendations'+(type==='movie'?',keywords':'')}));
  await presentSeries(await applyMoviePresentation(raw,endpoint,tmdb,translateMovie),endpoint,tmdb);return (await query('SELECT * FROM content_items WHERE key=$1',[type+':'+id])).rows[0];
 },awaitJobs:serverless,jobs:{sources:{label:'تحديث سيرفرات الأفلام',run:()=>linkSync.tick(serverless?{maxJobs:1,maxCandidates:2,throwOnError:true}:{})},discovery:{label:'اكتشاف الأفلام الجديدة',run:()=>sourceDiscovery.tick(serverless?{maxJobs:1,maxDiscoveryPages:2,throwOnError:true}:{})},adult:{label:'تحديث فئة +18',run:async()=>{const value=await adultCategory.refresh(serverless?{maxPages:1}:{});return {sourceCount:value.sourceCount,nextPage:value.refreshCursor||1};}}}});
@@ -236,19 +243,23 @@ export async function handleRequest(req, res) {
     const url = new URL(req.url, 'http://localhost');
     const settings=await currentSettings();
     if(settings.maintenance&&!url.pathname.startsWith('/uploads/')&&!url.pathname.endsWith('.css')&&!url.pathname.endsWith('.js')){res.writeHead(503,{'Content-Type':'text/html; charset=utf-8','Retry-After':'3600','Cache-Control':'no-store'});return res.end('<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="robots" content="noindex"><title>'+escapeHtml(settings.site_name)+'</title><body><h1>'+escapeHtml(settings.maintenance_message)+'</h1></body></html>');}
-    const pageKey=url.pathname+url.search;
-    const send = (status, body, type='text/html; charset=utf-8') => {
+    const pageKey=publicPageCacheKey(url,siteOrigin,process.env.VERCEL_URL||'local');
+    const send = async (status, body, type='text/html; charset=utf-8') => {
       // Chrome's XML viewer needs inline styles to hide the unformatted source.
       // Allow them only on XML responses; scripts and other resources stay blocked.
       if(type.startsWith('application/xml'))res.setHeader('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'; img-src data:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'");
-      if(status===200&&type.startsWith('text/html')&&process.env.TMDB_API_KEY){
+      if(pageKey&&status===200&&type.startsWith('text/html')&&process.env.TMDB_API_KEY){
+        const entry={body,csp:res.getHeader('Content-Security-Policy'),expires:Date.now()+60000};
+        if(serverless){await sharedCache.set(pageKey,entry,{ttl:300,tags:['cimahub-pages']});res.setHeader('X-Site-Cache','MISS');}
+        else {
         if(pageCache.size>=100)pageCache.delete(pageCache.keys().next().value);
-        pageCache.set(pageKey,{body,csp:res.getHeader('Content-Security-Policy'),expires:Date.now()+60000});
+        pageCache.set(pageKey,entry);
+        }
       }
       res.writeHead(status,{'Content-Type':type,'Cache-Control':'no-cache'});res.end(req.method==='HEAD'?undefined:body);
     };
-    const cachedPage=pageCache.get(pageKey);
-    if(cachedPage?.expires>Date.now()){res.setHeader('Content-Security-Policy',cachedPage.csp);res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-cache'});return res.end(req.method==='HEAD'?undefined:cachedPage.body);}
+    const cachedPage=pageKey&&(serverless?await sharedCache.get(pageKey):pageCache.get(pageKey));
+    if(cachedPage&&(serverless||cachedPage.expires>Date.now())){res.setHeader('X-Site-Cache','HIT');res.setHeader('Content-Security-Policy',cachedPage.csp);res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-cache'});return res.end(req.method==='HEAD'?undefined:cachedPage.body);}
     const redirect = target => {const destination=new URL(target,'http://localhost');res.writeHead(301,{Location:destination.pathname+destination.search+destination.hash});res.end();};
     if(url.pathname===categoriesPath||url.pathname===categoriesPath.slice(0,-1)){
       const page=categoriesPage(siteOrigin);

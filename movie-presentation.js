@@ -75,9 +75,9 @@ export async function applyMoviePresentation(data, endpoint, load, translate) {
   }
   if (Array.isArray(data.results)) return {...data, results: await updateList(data.results, type)};
   if (/^(movie|tv)\/\d+$/.test(endpoint)) {
-    const result = await update(data, type, true);
-    if (result.recommendations?.results) return {...result, recommendations: {
-      ...result.recommendations, results: await updateList(result.recommendations.results, type),
+    const [result,recommendations] = await Promise.all([update(data, type, true),data.recommendations?.results?updateList(data.recommendations.results,type):undefined]);
+    if (recommendations) return {...result, recommendations: {
+      ...result.recommendations, results: recommendations,
     }};
     return result;
   }

@@ -21,6 +21,6 @@ export async function presentSeries(data,endpoint,load,translate){
   return {...m,overview:await cleanStory(m,en,translate,{cachedOnly:!/^tv\/\d+$/.test(endpoint)}),english_title:en.name,name,original_name:name,original_language:m.original_language||en.original_language,series_display_title:`${animated?'مسلسل أنمي':'مسلسل'} ${name} ${(m.first_air_date||en.first_air_date||'').slice(0,4)}${(m.original_language||en.original_language)==='ar'?'':' مترجم'} كامل`,poster_path:poster(en.images?.posters)||m.poster_path||en.poster_path,backdrop_path:poster(en.images?.backdrops)||m.backdrop_path||en.backdrop_path,seasons:m.seasons?.map(s=>({...s,name:`الموسم ${s.season_number}`,poster_path:null})),series_presentation:true};
  }
  if(Array.isArray(data.results)){const results=[];for(let i=0;i<data.results.length;i+=4)results.push(...await Promise.all(data.results.slice(i,i+4).map(item)));return {...data,results};}
- if(/^(tv|movie)\/\d+$/.test(endpoint)){const result=await item(data);if(result.recommendations?.results)result.recommendations=await presentSeries(result.recommendations,'discover/tv',load,translate);return result;}
+ if(/^(tv|movie)\/\d+$/.test(endpoint)){const [result,recommendations]=await Promise.all([item(data),data.recommendations?.results?presentSeries(data.recommendations,'discover/tv',load,translate):undefined]);if(recommendations)result.recommendations=recommendations;return result;}
  return data;
 }
