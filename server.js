@@ -73,7 +73,7 @@ const linkSync=createLinkSync({loadMovie:tmdb});
 const sourceDiscovery=createQfilmDiscovery({loadMovie:tmdb,onMovie:async movie=>{
  const endpoint='movie/'+movie.id;
  const raw=await tmdb(endpoint,new URLSearchParams({language:'ar-SA',append_to_response:'credits,keywords'}));
- const presented=await seoCatalog.decorate(await applyMoviePresentation(raw,endpoint,tmdb,translateMovie));
+ const presented=await seoCatalog.decorate(await applyMoviePresentation(raw,endpoint,tmdb,translateMovie),undefined,{persist:true});
  await movieIndex.remember([presented]);queueMovieLinks([presented]);
 }});
 function queueMovieLinks(movies){if(!serverless&&process.env.TMDB_API_KEY)void linkSync.enqueue(movies.filter(m=>m.movie_presentation_version===1)).catch(e=>console.warn('Movie link queue:',e.message));}
@@ -389,7 +389,7 @@ export async function handleRequest(req, res) {
       }));
       presented.results=movies;
       if(!listing.comingSoon)queueMovieLinks(movies);
-      await movieIndex.remember(movies);
+      // Public requests must never write to D1. Movie indexing belongs to the sync job.
       const canonical=siteOrigin+listing.canonicalPath;
       const pageTitle=listing.title
         ?(listing.page>1?`${listing.title} — الصفحة ${listing.page} | سيما هَب`:`${listing.title} | سيما هَب`)

@@ -22,7 +22,8 @@ export function createD1SeoCatalog(){
    if(JSON.stringify(previous)!==JSON.stringify(next))await set('pages',path,next);
    if(path===`/${record.slug}/`){const updated={...record,indexable:!metadata.noindex,title:metadata.title,description:metadata.description};if(JSON.stringify(record)!==JSON.stringify(updated))await set('works',key,updated);}
   },
-  decorate(data,fallbackType){return serial(async()=>{
+  // Public rendering is read-only. Background sync can opt into persistence.
+  decorate(data,fallbackType,{persist=false}={}){return serial(async()=>{
    const candidates=[];
    function collect(value,fallback){if(!value||typeof value!=='object')return;if(Array.isArray(value.results)){value.results.forEach(v=>collect(v,fallback));return;}const type=value.media_type||fallback||(value.title?'movie':'tv');if(value.id&&['movie','tv'].includes(type)&&(value.title||value.name)){candidates.push({item:value,type,key:type+':'+value.id});if(value.recommendations)collect(value.recommendations,type);}}
    collect(data,fallbackType);await prefetchCatalog('works',candidates.map(c=>c.key));
@@ -35,6 +36,7 @@ export function createD1SeoCatalog(){
     if(!item.id||item.media_type==='person'||(!item.title&&!item.name))return item;
     const type=item.media_type||fallback||(item.title?'movie':'tv');if(!['movie','tv'].includes(type))return item;
     const key=`${type}:${item.id}`,existing=await get('works',key),name=englishWorkName(item)||`${type}-${item.id}`,year=(item.release_date||item.first_air_date||'').slice(0,4);
+    if(!persist&&!existing)return item;
     let record=existing;
     if(!record){let slug=slugify([name,year].filter(Boolean).join(' '))||`${type}-${item.id}`;if(['admin','movies','series','anime','search','top','recent','categories','api','uploads','seasons','episodes','dmca','terms'].includes(slug))slug+='-'+type;
      const owner=await resolveManaged(slug);if(owner&&(owner.id!==item.id||owner.type!==type))slug+='-'+type+'-'+item.id;
@@ -45,18 +47,18 @@ export function createD1SeoCatalog(){
      const prior=await get('images',source.slice(1));if(prior)source=prior.source;
      if(!/^\/[a-zA-Z0-9_-]+\.(jpg|png|webp)$/.test(source))return null;
      const extension=source.split('.').pop(),base=`${record.slug}-${role}`;let file=base+'.'+extension,n=2;
-     while(true){const previous=await get('images',file);if(!previous){await set('images',file,{source});break;}if(previous.source===source)break;file=`${base}-${n++}.${extension}`;}
+     while(true){const previous=await get('images',file);if(!previous){if(persist)await set('images',file,{source});break;}if(previous.source===source)break;file=`${base}-${n++}.${extension}`;}
      return '/'+file;
     }
     const result={...item,media_type:type,public_path:`/${record.slug}/`,poster_path:await image(item.poster_path,'poster'),backdrop_path:await image(item.backdrop_path,'backdrop')};
     const updated={...record,poster:result.poster_path};
     if(type==='movie')for(const field of ['certifications','age_rating','adult_audience']){if(item[field]!==undefined)updated[field]=item[field];if(result[field]===undefined&&record[field]!==undefined)result[field]=record[field];}
-    if(JSON.stringify(existing)!==JSON.stringify(updated))await set('works',key,updated);
+    if(persist&&JSON.stringify(existing)!==JSON.stringify(updated))await set('works',key,updated);
     if(item.seasons)result.seasons=await Promise.all(item.seasons.map(async s=>({...s,poster_path:await image(s.poster_path,`season-${s.season_number}-poster`)})));
     if(item.recommendations)result.recommendations=await visit(item.recommendations,type);
     return result;
    }
-   return rememberAndApply(await visit(data,fallbackType),fallbackType);
+   return persist?rememberAndApply(await visit(data,fallbackType),fallbackType):await visit(data,fallbackType);
   });}
  };
 }
