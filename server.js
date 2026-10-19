@@ -264,7 +264,7 @@ export async function handleRequest(req, res) {
     };
     const cachedPage=pageKey&&(serverless?await sharedCache.get(pageKey):pageCache.get(pageKey));
     if(cachedPage&&(serverless||cachedPage.expires>Date.now())){res.setHeader('X-Site-Cache','HIT');res.setHeader('Content-Security-Policy',cachedPage.csp);res.writeHead(200,{'Content-Type':'text/html; charset=utf-8','Cache-Control':'no-cache'});return res.end(req.method==='HEAD'?undefined:cachedPage.body);}
-    const redirect = target => {const destination=new URL(target,'http://localhost');res.writeHead(301,{Location:destination.pathname+destination.search+destination.hash});res.end();};
+    const redirect = target => {if(typeof target!=='string'||!target.startsWith('/')||target.startsWith('//')||/(?:^|\/)(?:undefined|null)(?:\/|$|[?#])/.test(target))return json(404,{error:'الصفحة غير موجودة'});const destination=new URL(target,'http://localhost');res.writeHead(301,{Location:destination.pathname+destination.search+destination.hash});res.end();};
     if(url.pathname===categoriesPath||url.pathname===categoriesPath.slice(0,-1)){
       const page=categoriesPage(siteOrigin);
       return send(200,renderSeoPage(await siteTemplate(),page.metadata,page.content).replace('data-server-rendered="true"','data-server-rendered="true" data-page-kind="categories"'));
@@ -286,6 +286,7 @@ export async function handleRequest(req, res) {
         m.source_adult_category=await adultCategory.contains(m.id);
         m.is_biography=(m.keywords?.keywords||[]).some(keyword=>keyword.id===movieTopicSections.biography.keyword);
       }
+      m.public_path ||= `/${record.slug}/`;
       const canonicalPath=m.public_path+(season?`season/${season}/`:'')+(episode?`episode/${episode}/`:'');
       if(decodeURIComponent(url.pathname)!==canonicalPath)return redirect(canonicalPath);
       if(!m.videos?.results?.length){try{m.videos=await tmdb(`${endpoint}/videos`,new URLSearchParams({language:'en-US'}));}catch{}}
@@ -374,7 +375,20 @@ export async function handleRequest(req, res) {
         const endpoint=`movie/${detail[1]}`;
         const data=await tmdb(endpoint,new URLSearchParams({language:'ar-SA',append_to_response:'credits,videos,recommendations,keywords'}));
         const namedMovie=await presentSeries(await applyMoviePresentation(data,endpoint,tmdb,translateMovie),endpoint,tmdb);
-        return redirect(namedMovie.public_path);
+        if(!namedMovie||namedMovie.adult)return json(404,{error:'العمل غير موجود'});
+        if(namedMovie.public_path&&namedMovie.public_path!==url.pathname)return redirect(namedMovie.public_path);
+        // Newly discovered works can be browsed before background sync assigns a slug.
+        // Render their existing numeric URL without creating database records on a visit.
+        const m={...namedMovie,public_path:url.pathname};
+        m.source_adult_category=await adultCategory.contains(m.id);
+        m.is_biography=(m.keywords?.keywords||[]).some(keyword=>keyword.id===movieTopicSections.biography.keyword);
+        m.externalSources=await managedSources(m,await movieLinks(m.id));
+        m.display_title=movieDisplayTitle(m);
+        const metadata=await applyPageOverrides(movieMetadata(m,siteOrigin),m);
+        metadata.image=m.poster_path?siteOrigin+localImage(m.poster_path):undefined;
+        const origins=[...new Set((m.externalSources||[]).flatMap(r=>r.playback||[]).map(l=>safeLink(l.url)).filter(Boolean).map(link=>new URL(link).origin))];
+        if(origins.length)res.setHeader('Content-Security-Policy',res.getHeader('Content-Security-Policy').replace('frame-src https://www.youtube-nocookie.com https://megamax.me;',`frame-src https://www.youtube-nocookie.com https://megamax.me ${origins.join(' ')};`));
+        return send(200,renderSeoPage(template,metadata,movieContent(m),[m,...(m.recommendations?.results||[])]).replace('data-server-rendered="true"',`data-server-rendered="true" data-page-kind="${m.genres?.some(g=>g.id===16)?'anime':'movies'}"`));
 
       }
       const requestPath=listingRequestPath(url,listing.canonicalPath);
