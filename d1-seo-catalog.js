@@ -2,6 +2,7 @@ import {createHash} from 'node:crypto';
 import {d1Request,prefetchCatalog} from './d1-client.js';
 import {englishWorkName} from './title-language.js';
 import {publicWorkSlug} from './public-work-path.js';
+import {rememberPreparedWork} from './public-preparation.js';
 import {rememberAndApply,resolveManaged,managedWorks} from './managed-content.js';
 const slugify=value=>String(value).normalize('NFKD').replace(/\p{M}/gu,'').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'').slice(0,150).replace(/-$/,'');
 const get=(namespace,key)=>d1Request('catalog.get',{namespace,key});
@@ -51,6 +52,7 @@ export function createD1SeoCatalog(){
      return '/'+file;
     }
     const result={...item,media_type:type,public_path:`/${record.slug}/`,poster_path:await image(item.poster_path,'poster'),backdrop_path:await image(item.backdrop_path,'backdrop')};
+    rememberPreparedWork(result);
     const updated={...record,poster:result.poster_path};
     if(type==='movie')for(const field of ['certifications','age_rating','adult_audience']){if(item[field]!==undefined)updated[field]=item[field];if(result[field]===undefined&&record[field]!==undefined)result[field]=record[field];}
     if(persist&&JSON.stringify(existing)!==JSON.stringify(updated))await set('works',key,updated);

@@ -2,7 +2,7 @@ import {MAX_LISTING_PAGES} from './public/pagination.js';
 import {withD1ReadOnly,isPublicDatabaseRead} from './d1-client.js';
 import {createPublicWorkResolver} from './public-work-path.js';
 import {publishContent} from './publication.js';
-import {preparedProviderResponse} from './public-database.js';
+import {preparedProviderResponse,preparedWorkRoute} from './public-database.js';
 import {createSharedCache,publicPageCacheKey} from './shared-cache.js';
 import {createOptimizedImageCache} from './optimized-image.js';
 import {withSiteNavigation} from './site-navigation.js';
@@ -54,7 +54,7 @@ function listingRequestPath(url,canonicalPath){
 }
 const seoCatalog=createSeoCatalog(process.env.SEO_DATA_DIR?pathToFileURL(path.resolve(process.env.SEO_DATA_DIR)+path.sep):undefined);
 const resolveNewWork=createPublicWorkResolver(tmdb);
-const resolvePublicWork=async slug=>await seoCatalog.resolve(slug)||await resolveNewWork(slug);
+const resolvePublicWork=async slug=>await seoCatalog.resolve(slug)||(isPublicDatabaseRead()?preparedWorkRoute(slug):null)||await resolveNewWork(slug);
 const adultCategory=createAdultCategory({directory:process.env.SEO_DATA_DIR?pathToFileURL(path.resolve(process.env.SEO_DATA_DIR)+path.sep):undefined,loadMovie:tmdb});
 // Cached category data stays available without work that outlives a request.
 if(serverless)adultCategory.setInterval(Infinity);

@@ -12,6 +12,12 @@ export function preparedProviderResponse(key){
  const row=publicDatabaseRequest('query',{statements:[{sql:'SELECT body FROM prepared_provider_responses WHERE key=?',params:[key]}]})[0].results[0];
  return row?JSON.parse(row.body):undefined;
 }
+export function preparedWorkRoute(slug){
+ if(!publicDatabaseAvailable())return;
+ if(!publicDatabaseRequest('query',{statements:[{sql:"SELECT name FROM sqlite_master WHERE type='table' AND name='prepared_work_routes'"}]})[0].results.length)return;
+ const rows=publicDatabaseRequest('query',{statements:[{sql:'SELECT type,id,slug FROM prepared_work_routes WHERE slug=?',params:[slug]}]})[0].results;
+ return rows.length===1?rows[0]:undefined;
+}
 export function publicDatabaseRequest(operation,input={}){
  const path=publicDatabasePath();
  if(!database||openedPath!==path){database?.close();database=new DatabaseSync(path,{readOnly:true});openedPath=path;}

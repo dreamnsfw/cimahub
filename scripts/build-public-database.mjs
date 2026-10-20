@@ -14,13 +14,16 @@ try{
   db.exec(`DELETE FROM ${table}`);
   let cursor=0,total=0;
   while(true){
-   const sql=`SELECT rowid AS _export_rowid,* FROM ${table} WHERE rowid>? ORDER BY rowid LIMIT ?`,params=[cursor,table==='data_document_chunks'?10:100];
+   const sql=`SELECT rowid AS _export_rowid,* FROM ${table} WHERE rowid>? ORDER BY rowid LIMIT ?`,params=[cursor,table==='data_document_chunks'?25:500];
    let rows;
    if(source)rows=source.prepare(sql).all(...params);
    else{
-    const response=await fetch(process.env.D1_GATEWAY_URL,{method:'POST',headers:{Authorization:'Bearer '+process.env.D1_GATEWAY_TOKEN,'Content-Type':'application/json'},body:JSON.stringify({operation:'query',statements:[{sql,params}]}),signal:AbortSignal.timeout(30000)});
+    const direct=Boolean(process.env.D1_BUILD_READ_TOKEN);
+    const config=direct?JSON.parse(await readFile(new URL('../cloudflare/wrangler.jsonc',import.meta.url),'utf8')):null;
+    const endpoint=direct?`https://api.cloudflare.com/client/v4/accounts/${config.account_id}/d1/database/${config.d1_databases[0].database_id}/query`:process.env.D1_GATEWAY_URL;
+    const response=await fetch(endpoint,{method:'POST',headers:{Authorization:'Bearer '+(direct?process.env.D1_BUILD_READ_TOKEN:process.env.D1_GATEWAY_TOKEN),'Content-Type':'application/json'},body:JSON.stringify(direct?{sql,params}:{operation:'query',statements:[{sql,params}]}),signal:AbortSignal.timeout(30000)});
     if(!response.ok)throw new Error(`Cannot prepare public data: ${table} returned ${response.status}`);
-    const batch=await response.json();rows=batch[0]?.results;
+    const batch=await response.json();rows=(direct?batch.result:batch)[0]?.results;
    }
    if(!Array.isArray(rows))throw new Error('Invalid public export response');
    if(!rows.length)break;
