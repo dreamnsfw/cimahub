@@ -2,7 +2,8 @@ import {createHash} from 'node:crypto';
 import {getCache} from '@vercel/functions';
 
 // Cache failures must never turn an otherwise healthy public page into an error.
-export function createSharedCache({enabled=Boolean(process.env.VERCEL),store=getCache({namespace:'cimahub-public-v1',keyHashFunction:key=>key})}={}){
+export function createSharedCache({enabled=Boolean(process.env.VERCEL)&&process.env.CIMAHUB_PREPARING_PUBLIC_DATA!=='1',store}={}){
+ store??=enabled?getCache({namespace:'cimahub-public-v1',keyHashFunction:key=>key}):undefined;
  const key=value=>createHash('sha256').update(value).digest('hex');
  return {
   async get(name){if(!enabled)return;try{return await store.get(key(name));}catch{return undefined;}},

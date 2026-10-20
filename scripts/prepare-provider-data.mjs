@@ -5,6 +5,7 @@ import {movieSections,movieGenres,movieTopicSections,adultMovieCategory,comingSo
 import {publicWorkSlug} from '../public-work-path.js';
 import {observePreparedWorks} from '../public-preparation.js';
 export async function prepareProviderData(){
+ process.env.CIMAHUB_PREPARING_PUBLIC_DATA='1';
  const file=fileURLToPath(new URL('../db/public.sqlite',import.meta.url));
  const db=new DatabaseSync(file);
  db.exec('CREATE TABLE IF NOT EXISTS prepared_provider_responses (key TEXT PRIMARY KEY,body TEXT NOT NULL)');

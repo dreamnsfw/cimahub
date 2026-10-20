@@ -18,6 +18,16 @@ test('cache outages do not break rendering, while failed admin invalidation is r
  assert.equal(await cache.get('page'),undefined);await cache.set('page','html');
  await assert.rejects(cache.invalidatePages(),/offline/);
 });
+
+test('public data preparation never calls the remote runtime cache',async()=>{
+ const previous={VERCEL:process.env.VERCEL,CIMAHUB_PREPARING_PUBLIC_DATA:process.env.CIMAHUB_PREPARING_PUBLIC_DATA};
+ process.env.VERCEL='1';process.env.CIMAHUB_PREPARING_PUBLIC_DATA='1';
+ try{
+  const unexpected=()=>{throw Error('Build must not call runtime cache');};
+  const cache=createSharedCache({store:{get:unexpected,set:unexpected,expireTag:unexpected}});
+  assert.equal(await cache.get('page'),undefined);await cache.set('page','html');await cache.invalidatePages();
+ }finally{for(const [key,value] of Object.entries(previous)){if(value===undefined)delete process.env[key];else process.env[key]=value;}}
+});
 test('private routes and search never enter the public HTML cache; deployment, origin and year are isolated',()=>{
  const key=(path,origin='https://cimahub.net',version='one',year=2026)=>publicPageCacheKey(new URL(path,'https://cimahub.net'),origin,version,new Date(year,0,1));
  for(const path of ['/admin/','/api/admin/content','/api/home','/uploads/thumbs/w300/a.jpg','/search/','/search?q=x'])assert.equal(key(path),null);
