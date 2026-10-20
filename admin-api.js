@@ -143,7 +143,7 @@ export function createAdminApi({origin,loadWork,loadTMDB,onChange=()=>{},jobs={}
     const settings=await currentSettings();result={jobs:Object.entries(jobs).map(([name,job])=>({name,label:({sources:'Update movie sources',discovery:'Discover new movies',adult:'Update 18+ category'}[name]||job.label),running:running.has(name),enabled:settings.sync_enabled!==false})),runs:(await query('SELECT * FROM job_runs ORDER BY id DESC LIMIT 50')).rows};
    }else if(/^\/jobs\/[a-z-]+\/run$/.test(path)&&req.method==='POST'){
     admin();const name=path.split('/')[2],job=jobs[name];if(!job)throw fail(404,'Sync job not found.');if(running.has(name))throw fail(409,'This sync job is already running.');running.add(name);
-    const task=runRecordedJob({name,run:()=>job.run(),bounded:awaitJobs}).finally(()=>running.delete(name));
+    const task=runRecordedJob({name,run:()=>job.run(),bounded:awaitJobs}).then(async result=>{await changed();return result;}).finally(()=>running.delete(name));
     if(awaitJobs)result=await task;else{void task.catch(()=>{});result={ok:true};}
    }else if(path==='/users'&&req.method==='GET'){admin();result={items:(await query('SELECT id,email,role,active,created_at FROM admin_users ORDER BY created_at')).rows};
    }else if(path==='/users'&&req.method==='POST'){

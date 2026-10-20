@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
   "fluid": true,
-  "buildCommand": "",
+  "buildCommand": "node scripts/build-public-database.mjs",
   "outputDirectory": "public",
   "functions": {
     "api/index.mjs": {

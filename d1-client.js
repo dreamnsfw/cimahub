@@ -1,7 +1,9 @@
 import {d1Statement,d1Rows} from './d1-sql.js';
 import {AsyncLocalStorage} from 'node:async_hooks';
+import {publicDatabaseAvailable,publicDatabaseRequest} from './public-database.js';
 const accessContext=new AsyncLocalStorage();
 export const withD1ReadOnly=work=>accessContext.run({readOnly:true},work);
+export const isPublicDatabaseRead=()=>Boolean(accessContext.getStore()?.readOnly&&d1Enabled()&&publicDatabaseAvailable());
 const catalogCache=new Map(),catalogPending=new Map();
 export async function prefetchCatalog(namespace,keys){
  keys=[...new Set(keys)].filter(key=>{const old=catalogCache.get(namespace+':'+key);return !old||old.expires<=Date.now();});
@@ -14,6 +16,8 @@ export async function d1Request(operation,data={}){
  if(accessContext.getStore()?.readOnly){
   if(['catalog.set','document.write','document.rename'].includes(operation))return {ok:true,skipped:true};
   if(operation==='user.update'||(operation==='query'&&data.statements.some(({sql})=>!/^\s*SELECT\b/i.test(sql))))throw Object.assign(new Error('Public requests cannot write to D1'),{code:'D1_READ_ONLY'});
+  if(d1Enabled()&&publicDatabaseAvailable())return structuredClone(publicDatabaseRequest(operation,data));
+  if(d1Enabled()&&process.env.VERCEL)throw Object.assign(new Error('Prepared public database is missing'),{code:'PUBLIC_DATABASE_MISSING'});
  }
  const cacheKey=operation==='catalog.get'?data.namespace+':'+data.key:null;
  if(cacheKey){const old=catalogCache.get(cacheKey);if(old&&old.expires>Date.now())return structuredClone(old.value);if(catalogPending.has(cacheKey))return structuredClone(await catalogPending.get(cacheKey));}

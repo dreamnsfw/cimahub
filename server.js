@@ -1,6 +1,8 @@
 import {MAX_LISTING_PAGES} from './public/pagination.js';
-import {withD1ReadOnly} from './d1-client.js';
+import {withD1ReadOnly,isPublicDatabaseRead} from './d1-client.js';
 import {createPublicWorkResolver} from './public-work-path.js';
+import {publishContent} from './publication.js';
+import {preparedProviderResponse} from './public-database.js';
 import {createSharedCache,publicPageCacheKey} from './shared-cache.js';
 import {createOptimizedImageCache} from './optimized-image.js';
 import {withSiteNavigation} from './site-navigation.js';
@@ -147,7 +149,21 @@ export function routeApi(url) {
   return { endpoint, params };
 }
 async function tmdb(endpoint, params) {
+  const prepared=endpoint.match(/^(movie|tv)\/(\d+)$/);
+  if(prepared&&isPublicDatabaseRead()){
+    const snapshot=(await query("SELECT snapshot FROM content_items WHERE key=$1 AND status='published'",[prepared[1]+':'+prepared[2]])).rows[0]?.snapshot;
+    if(snapshot&&(snapshot.title||snapshot.name))return {...snapshot,id:Number(prepared[2]),media_type:prepared[1]};
+  }
+  const preparedExtra=endpoint.match(/^(movie|tv)\/(\d+)\/(videos|credits|images|release_dates)$/);
+  if(preparedExtra&&isPublicDatabaseRead()){
+    const snapshot=(await query("SELECT snapshot FROM content_items WHERE key=$1 AND status='published'",[preparedExtra[1]+':'+preparedExtra[2]])).rows[0]?.snapshot;
+    if(snapshot)return snapshot[preparedExtra[3]]||{results:[],cast:[],crew:[],posters:[],backdrops:[]};
+  }
   const key = `${endpoint}?${params}`;
+  if(isPublicDatabaseRead()){
+    const saved=preparedProviderResponse(key);
+    if(saved)return saved;
+  }
   if (cache.get(key)?.expires > Date.now()) return cache.get(key).data;
   if (pendingRequests.has(key)) return pendingRequests.get(key);
   const request=(async()=>{
@@ -213,7 +229,15 @@ async function applyAdministration(invalidate=false){
  sourceDiscovery.setInterval?.(settings.sync_interval_hours*3600000);adultCategory.setInterval?.(settings.sync_interval_hours*3600000);
  if(settings.sync_enabled){void linkSync.start().catch(()=>{});sourceDiscovery.start();scheduledSync=setInterval(()=>{void adultCategory.refresh().catch(()=>{});},settings.sync_interval_hours*3600000);scheduledSync.unref();}
 }
-let administrationReady;
+let administrationReady,publicAdministrationReady;
+async function initializePublicAdministration(){
+ if(!dbEnabled())return;
+ if(!publicAdministrationReady)publicAdministrationReady=(async()=>{
+  await initializeDatabase();
+  configureNavigationTaxonomy((await query('SELECT * FROM taxonomy')).rows);
+ })().catch(error=>{publicAdministrationReady=undefined;throw error;});
+ return publicAdministrationReady;
+}
 async function initializeAdministration(){
  if(!dbEnabled())return;
  if(!administrationReady)administrationReady=(async()=>{
@@ -221,7 +245,7 @@ async function initializeAdministration(){
  })().catch(error=>{administrationReady=undefined;throw error;});
  return administrationReady;
 }
-const adminApi=createAdminApi({origin:siteOrigin,onChange:()=>applyAdministration(true),loadTMDB:tmdb,loadWork:async(type,id)=>{
+const adminApi=createAdminApi({origin:siteOrigin,onChange:async()=>{await applyAdministration(true);await publishContent();},loadTMDB:tmdb,loadWork:async(type,id)=>{
  const endpoint=type+'/'+id;const raw=await tmdb(endpoint,new URLSearchParams({language:'ar-SA',append_to_response:'credits,videos,recommendations'+(type==='movie'?',keywords':'')}));
  await presentSeries(await applyMoviePresentation(raw,endpoint,tmdb,translateMovie),endpoint,tmdb);return (await query('SELECT * FROM content_items WHERE key=$1',[type+':'+id])).rows[0];
 },awaitJobs:serverless,jobs:{sources:{label:'تحديث سيرفرات الأفلام',run:()=>linkSync.tick(serverless?{maxJobs:1,maxCandidates:2,throwOnError:true}:{})},discovery:{label:'اكتشاف الأفلام الجديدة',run:()=>sourceDiscovery.tick(serverless?{maxJobs:1,maxDiscoveryPages:2,throwOnError:true}:{})},adult:{label:'تحديث فئة +18',run:async()=>{const value=await adultCategory.refresh(serverless?{maxPages:1}:{});return {sourceCount:value.sourceCount,nextPage:value.refreshCursor||1};}}}});
@@ -242,9 +266,9 @@ export async function handleRequest(req, res) {
   };
   try { if(await servePublicAsset(req,res,new URL(req.url,'http://localhost').pathname))return; }
   catch { return json(400,{error:'عنوان الصفحة غير صالح'}); }
-  try{await initializeAdministration();}catch{return json(503,{error:'تعذر الاتصال بقاعدة بيانات الموقع'});}
-  if(req.url.startsWith('/admin')||req.url.startsWith('/api/admin/')){try{if(await adminApi.handle(req,res,new URL(req.url,'http://localhost')))return;}catch{return json(503,{error:'تعذر الاتصال بقاعدة بيانات الإدارة'});}}
+  if(req.url.startsWith('/admin')||req.url.startsWith('/api/admin/')){try{await initializeAdministration();if(await adminApi.handle(req,res,new URL(req.url,'http://localhost')))return;}catch{return json(503,{error:'تعذر الاتصال بقاعدة بيانات الإدارة'});}}
   return withD1ReadOnly(async()=>{
+  try{await initializePublicAdministration();}catch(error){console.error('Public initialization failed',error.code||error.name);return json(503,{error:'تعذر تحميل بيانات الموقع'});}
   if (!['GET', 'HEAD'].includes(req.method)) return json(405, {error: 'الطلب غير مدعوم'});
   try {
     const url = new URL(req.url, 'http://localhost');
@@ -281,7 +305,13 @@ export async function handleRequest(req, res) {
       const season=Number(named[2])||undefined,episode=Number(named[3])||undefined;
       if(season&&record.type!=='tv')return json(404,{error:'الصفحة غير موجودة'});
       const endpoint=`${record.type}/${record.id}`;
-      const raw=await tmdb(endpoint,new URLSearchParams({language:'ar-SA',append_to_response:'credits,videos,recommendations'+(record.type==='movie'?',keywords':'')}));
+      let raw;
+      try{raw=await tmdb(endpoint,new URLSearchParams({language:'ar-SA',append_to_response:'credits,videos,recommendations'+(record.type==='movie'?',keywords':'')}));}
+      catch(error){
+       const saved=dbEnabled()?(await query("SELECT snapshot FROM content_items WHERE key=$1 AND status='published'",[record.type+':'+record.id])).rows[0]?.snapshot:null;
+       if(!saved||(!saved.title&&!saved.name))throw error;
+       raw={...saved,id:record.id,media_type:record.type};
+      }
       if(raw.adult)return json(404,{error:'العمل غير متاح'});
       let m=await presentSeries(await applyMoviePresentation(raw,endpoint,tmdb,translateMovie),endpoint,tmdb);
       if(!m)return json(404,{error:'العمل غير موجود'});
@@ -570,7 +600,7 @@ export async function handleRequest(req, res) {
     }
     return json(404, {error: 'الصفحة غير موجودة'});
   } catch (error) {
-    if(!(error instanceof URIError)&&(!error.status||error.status>=500))console.error('Public request failed',JSON.stringify({path:req.url.split('?')[0],name:error.name,code:error.code,stack:error.stack?.split('\n').slice(1,5).map(line=>line.replace(/https?:\/\/\S+/g,'[remote URL]'))}));
+    if(!(error instanceof URIError)&&(!error.status||error.status>=500))console.error('Public request failed',JSON.stringify({path:req.url.split('?')[0],name:error.name,code:error.code,message:String(error.message||'').replace(/https?:\/\/\S+/g,'[remote URL]').slice(0,300),stack:error.stack?.split('\n').slice(1,5).map(line=>line.replace(/https?:\/\/\S+/g,'[remote URL]'))}));
     json(error instanceof URIError?400:error.status || 502, {error: error instanceof URIError?'عنوان الصفحة غير صالح':error.status ? error.message : 'تعذّر الاتصال بخدمة الأفلام. حاول مجددًا.'});
   }
   });

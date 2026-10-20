@@ -140,7 +140,7 @@ export async function managedWorks() {
     const name = overrides[row.kind === 'movie' ? 'title' : 'name'] || row.name;
     return {...snapshot, id: Number(row.provider_id), type: row.kind, slug: row.slug, name,
       year: String(overrides.release_date || overrides.first_air_date || row.year || '').slice(0, 4),
-      status: row.status, indexable: row.status === 'published' && (typeof overrides.noindex==='boolean'?!overrides.noindex:snapshot.indexable!==false),
+      status: row.status, indexable: row.status === 'published' && !snapshot.adult && (typeof overrides.noindex==='boolean'?!overrides.noindex:snapshot.indexable!==false),
       poster: overrides.poster_path ?? snapshot.poster_path ?? snapshot.poster,
       title: overrides.seo_title || snapshot.title,
       description: overrides.seo_description || snapshot.description || snapshot.overview};

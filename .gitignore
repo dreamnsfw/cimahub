@@ -23,3 +23,4 @@ category_keywords.json
 public/uploads/
 
 .vercel
+db/public.sqlite*

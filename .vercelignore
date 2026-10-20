@@ -3,6 +3,7 @@
 .env
 .env.*
 .runtime/
+db/public.sqlite*
 node_modules/
 coverage/
 *.log

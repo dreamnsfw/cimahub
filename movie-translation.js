@@ -1,5 +1,6 @@
 import {mkdir, readFile, writeFile, rename} from './storage.js';
 import {createHash} from 'node:crypto';
+import {isPublicDatabaseRead} from './d1-client.js';
 
 // MyMemory accepts at most 500 UTF-8 bytes per request. Prefer sentence boundaries.
 export function translationChunks(text) {
@@ -28,7 +29,7 @@ export function createMovieTranslator({directory = new URL('./data/translations/
       const saved = JSON.parse(await readFile(filename, 'utf8'));
       if (saved.hash === hash && /[\u0600-\u06ff]/u.test(saved.overview)) return saved.overview;
     } catch (error) { if (error.code !== 'ENOENT' && !(error instanceof SyntaxError)) console.warn('Movie translation cache read failed'); }
-    if (cachedOnly || quotaUntil > Date.now() || failures.get(hash) > Date.now()) return '';
+    if (cachedOnly || isPublicDatabaseRead() || quotaUntil > Date.now() || failures.get(hash) > Date.now()) return '';
     if (pending.has(hash)) return pending.get(hash);
     const work = (async () => {
       try {
